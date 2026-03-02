@@ -1,0 +1,29 @@
+# Fichiers système macOS
+.DS_Store
+
+# Fichiers Python générés
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Fichiers de logs / temporaires
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Config / cache d'IDE
+.vscode/
+.idea/
+.pytest_cache/
+.mypy_cache/
+
+# Dossier interne Cursor
+.cursor/
+
