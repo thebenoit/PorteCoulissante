@@ -10,6 +10,7 @@ Objectifs :
 
 from __future__ import annotations
 
+import logging
 import time
 import tkinter as tk
 from tkinter import ttk
@@ -206,6 +207,11 @@ class GreenhouseApp(tk.Tk):
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
     app = GreenhouseApp()
     app.mainloop()
 

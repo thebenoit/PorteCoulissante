@@ -8,12 +8,15 @@ capteur ultrason (distance). Fallback et avertissements si un capteur est absent
 
 from __future__ import annotations
 
+import logging
 import math
 import random
 from dataclasses import dataclass
 from typing import List, Optional, Any
 
 from algorithm import clamp
+
+logger = logging.getLogger(__name__)
 
 # Valeurs de repli quand un capteur n'est pas détecté ou invalide
 FALLBACK_TEMPERATURE_C = 25.0
@@ -97,14 +100,20 @@ class SensorManager:
     def _detect_raspberry_gpio(self) -> bool:
         try:
             import RPi.GPIO as _  # noqa: F401
+            logger.info("Raspberry Pi détecté (RPi.GPIO disponible).")
             return True
-        except Exception:
+        except Exception as e:
+            logger.info(
+                "Raspberry Pi non détecté (mode simulation PC): %s",
+                e,
+            )
             return False
 
     def _init_hardware(self) -> None:
         """Initialise l'ADC et le capteur de distance lorsque le matériel est disponible."""
         self._init_adc()
         self._init_distance_sensor()
+        self._log_sensor_status()
 
     def _init_adc(self) -> None:
         try:
@@ -113,15 +122,19 @@ class SensorManager:
             if adc.detectI2C(0x48):
                 self._adc = PCF8591()
                 self._adc_available = True
+                logger.info("Capteur ADC détecté: PCF8591 (0x48) — température et luminosité disponibles.")
             elif adc.detectI2C(0x4B):
                 self._adc = ADS7830()
                 self._adc_available = True
+                logger.info("Capteur ADC détecté: ADS7830 (0x4B) — température et luminosité disponibles.")
             else:
                 self._adc = None
                 self._adc_available = False
-        except Exception:
+                logger.warning("Aucun ADC détecté (ni 0x48 ni 0x4B). Température et luminosité en valeur de repli.")
+        except Exception as e:
             self._adc = None
             self._adc_available = False
+            logger.warning("ADC non initialisable: %s — température et luminosité en valeur de repli.", e)
 
     def _init_distance_sensor(self) -> None:
         try:
@@ -132,9 +145,32 @@ class SensorManager:
                 max_distance=ULTRASONIC_MAX_DISTANCE_M,
             )
             self._distance_available = True
-        except Exception:
+            logger.info(
+                "Capteur de distance (ultrason) détecté — broches trigger=%s, echo=%s.",
+                ULTRASONIC_TRIGGER_PIN,
+                ULTRASONIC_ECHO_PIN,
+            )
+        except Exception as e:
             self._distance_sensor = None
             self._distance_available = False
+            logger.warning(
+                "Capteur de distance (ultrason) non détecté: %s — distance simulée par le moteur.",
+                e,
+            )
+
+    def _log_sensor_status(self) -> None:
+        """Résumé du statut des capteurs dans les logs."""
+        if not self.is_hardware_available:
+            return
+        temp_ok = self._adc_available
+        lum_ok = self._adc_available
+        dist_ok = self._distance_available
+        logger.info(
+            "Statut capteurs — Température: %s, Luminosité: %s, Distance: %s",
+            "détecté" if temp_ok else "non détecté (repli)",
+            "détecté" if lum_ok else "non détecté (repli)",
+            "détecté" if dist_ok else "non détecté (repli)",
+        )
 
     def read_temperature_c(self) -> float:
         if not self.is_hardware_available:
