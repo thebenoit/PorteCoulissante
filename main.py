@@ -117,8 +117,19 @@ class GreenhouseApp(tk.Tk):
         self._manual_frame = manual_frame
         self._manual_entry.bind("<Return>", lambda _event: self._on_apply_manual_opening_clicked())
 
+        self._warnings_var = tk.StringVar(value="")
+        self._warnings_frame = ttk.LabelFrame(self, text="Avertissements")
+        self._warnings_label = ttk.Label(
+            self._warnings_frame,
+            textvariable=self._warnings_var,
+            wraplength=500,
+        )
+        self._warnings_label.grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        self._warnings_frame.grid(row=5, column=0, padx=12, pady=6, sticky="ew")
+        self._warnings_frame.grid_remove()  # caché tant qu'il n'y a pas d'avertissements
+
         footer = ttk.Label(self, text="Simulation PC" if not self._sensor_manager.is_hardware_available else "Raspberry Pi détecté")
-        footer.grid(row=5, column=0, padx=12, pady=(0, 10), sticky="w")
+        footer.grid(row=6, column=0, padx=12, pady=(0, 10), sticky="w")
 
     def _apply_mode_to_ui(self) -> None:
         is_manual = self._mode_var.get() == "manual"
@@ -185,6 +196,13 @@ class GreenhouseApp(tk.Tk):
 
         self._distance_var.set(f"{snapshot.distance_cm:.0f} cm")
         self._opening_var.set(f"{snapshot.current_opening_percent:.0f} %")
+
+        if snapshot.warnings:
+            self._warnings_var.set("\n".join(snapshot.warnings))
+            self._warnings_frame.grid(row=5, column=0, padx=12, pady=6, sticky="ew")
+        else:
+            self._warnings_var.set("")
+            self._warnings_frame.grid_remove()
 
 
 def main() -> None:

@@ -20,6 +20,7 @@ class SystemSnapshot:
     current_opening_percent: float
     motor_status: MotorStatus
     distance_cm: float
+    warnings: tuple[str, ...]
 
 
 class GreenhouseController:
@@ -58,13 +59,22 @@ class GreenhouseController:
         self._motor.set_target_opening_percent(target_opening)
         self._motor.update(dt_seconds)
 
+        real_distance_cm = self._sensor_manager.read_distance_cm()
+        distance_cm = (
+            real_distance_cm
+            if real_distance_cm is not None
+            else self._motor.get_distance_cm()
+        )
+        warnings = tuple(self._sensor_manager.get_warnings())
+
         snapshot = SystemSnapshot(
             readings=SensorReadings(temperature_c=temp_c, luminosity_percent=lum),
             automatic_opening_percent=automatic_opening,
             target_opening_percent=target_opening,
             current_opening_percent=self._motor.get_current_opening_percent(),
             motor_status=self._motor.get_motor_status(),
-            distance_cm=self._motor.get_distance_cm(),
+            distance_cm=distance_cm,
+            warnings=warnings,
         )
         self._last_snapshot = snapshot
         return snapshot
