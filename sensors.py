@@ -31,6 +31,13 @@ FALLBACK_LUMINOSITY_PERCENT = 50.0
 ADC_CHANNEL_THERMISTOR = 0
 ADC_CHANNEL_PHOTORESISTOR = 1
 
+# Luminosité : calibration et sens
+# Inversion : True = plus de lumière → ADC plus bas (LDR vers GND). Sinon False.
+LUMINOSITY_ADC_INVERTED = True
+# Plage ADC utile : mesurer avec read_luminosity_raw() dans le noir puis à la lumière, et renseigner ici.
+LUMINOSITY_ADC_MIN = 0
+LUMINOSITY_ADC_MAX = 255
+
 # Broches ultrason (ultrasonic_ex.py)
 ULTRASONIC_TRIGGER_PIN = 23
 ULTRASONIC_ECHO_PIN = 24
@@ -73,6 +80,24 @@ def _convert_thermistor_adc_to_celsius(value: int) -> Optional[float]:
     except (ValueError, ZeroDivisionError):
         return None
     return temp_k - 273.15
+
+
+def _adc_to_luminosity_percent(raw_value: int) -> float:
+    """
+    Convertit une lecture ADC brute (0-255) en pourcentage de luminosité (0 = noir, 100 = clair).
+
+    - LUMINOSITY_ADC_INVERTED : True si plus de lumière → valeur ADC plus basse (câblage classique LDR vers GND).
+    - LUMINOSITY_ADC_MIN / MAX : plage ADC observée (étaler cette plage sur 0–100 %).
+    """
+    adc_min = min(LUMINOSITY_ADC_MIN, LUMINOSITY_ADC_MAX)
+    adc_max = max(LUMINOSITY_ADC_MIN, LUMINOSITY_ADC_MAX)
+    span = adc_max - adc_min if adc_max > adc_min else 255
+    if LUMINOSITY_ADC_INVERTED:
+        normalized = (adc_max - raw_value) / span
+    else:
+        normalized = (raw_value - adc_min) / span
+    percent = normalized * 100.0
+    return float(clamp(percent, 0.0, 100.0))
 
 
 class SensorManager:
@@ -211,6 +236,20 @@ class SensorManager:
         time.sleep(_PCF8591_CHANNEL_SETTLING_S)
         return self._adc.analogRead(ADC_CHANNEL_PHOTORESISTOR)
 
+    def read_luminosity_raw(self) -> Optional[int]:
+        """
+        Retourne la valeur ADC brute (0-255) du canal luminosité, ou None si indisponible.
+
+        Utile pour calibrer LUMINOSITY_ADC_MIN/MAX : afficher cette valeur
+        dans l'obscurité puis à la lumière et mettre ces deux valeurs dans la config.
+        """
+        if not self.is_hardware_available or not self._adc_available or self._adc is None:
+            return None
+        try:
+            return self._read_luminosity_adc_fresh()
+        except Exception:
+            return None
+
     def read_luminosity_percent(self) -> float:
         if not self.is_hardware_available:
             return float(self._sim_luminosity.next_value())
@@ -221,9 +260,10 @@ class SensorManager:
             return FALLBACK_LUMINOSITY_PERCENT
 
         try:
-            value = self._read_luminosity_adc_fresh()
-            result = clamp(value / 255.0 * 100.0, 0.0, 100.0)
-            return float(result)
+            raw = self._read_luminosity_adc_fresh()
+            percent = _adc_to_luminosity_percent(raw)
+            logger.debug("Luminosité ADC brut: %d → %.1f %%", raw, percent)
+            return percent
         except Exception:
             self._luminosity_fallback_used = True
             return FALLBACK_LUMINOSITY_PERCENT
