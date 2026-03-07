@@ -11,10 +11,15 @@ from __future__ import annotations
 import logging
 import math
 import random
+import time
 from dataclasses import dataclass
 from typing import List, Optional, Any
 
 from algorithm import clamp
+
+# Délai (s) après une lecture "poubelle" pour laisser le PCF8591 terminer
+# la conversion du canal luminosité (évite de lire le canal température à la place).
+_PCF8591_CHANNEL_SETTLING_S = 0.005
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +198,19 @@ class SensorManager:
             self._temperature_fallback_used = True
             return FALLBACK_TEMPERATURE_C
 
+    def _read_luminosity_adc_fresh(self) -> int:
+        """
+        Lit le canal ADC luminosité en s'assurant d'avoir une conversion à jour.
+
+        Sur PCF8591, après une lecture température (canal 0), la première lecture
+        du canal 1 peut renvoyer la valeur du canal 0 si la conversion n'est pas
+        terminée. Une lecture poubelle + court délai + seconde lecture évite ce
+        mélange de canaux (luminosité qui retombe vers 40–50 %).
+        """
+        self._adc.analogRead(ADC_CHANNEL_PHOTORESISTOR)
+        time.sleep(_PCF8591_CHANNEL_SETTLING_S)
+        return self._adc.analogRead(ADC_CHANNEL_PHOTORESISTOR)
+
     def read_luminosity_percent(self) -> float:
         if not self.is_hardware_available:
             return float(self._sim_luminosity.next_value())
@@ -203,7 +221,7 @@ class SensorManager:
             return FALLBACK_LUMINOSITY_PERCENT
 
         try:
-            value = self._adc.analogRead(ADC_CHANNEL_PHOTORESISTOR)
+            value = self._read_luminosity_adc_fresh()
             result = clamp(value / 255.0 * 100.0, 0.0, 100.0)
             return float(result)
         except Exception:
