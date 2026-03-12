@@ -283,32 +283,28 @@ class SensorManager:
         """Retourne la liste des avertissements (capteur non détecté ou valeur de repli utilisée)."""
         warnings: List[str] = []
         if not self.is_hardware_available:
+            warnings.append("Raspberry Pi non détecté — mode simulation (valeurs simulées).")
             return warnings
 
         if not self._adc_available or self._adc is None:
             warnings.append(
-                "ADC (température / luminosité) non détecté. "
-                "Valeurs par défaut utilisées (25 °C, 50 %)."
+                "ADC non détecté (température / luminosité). "
+                f"Valeurs par défaut utilisées ({FALLBACK_TEMPERATURE_C:.0f} °C, {FALLBACK_LUMINOSITY_PERCENT:.0f} %)."
             )
         else:
             if self._temperature_fallback_used:
                 warnings.append(
-                    "Température : valeur invalide ou erreur de lecture, "
+                    "Température : erreur de lecture ou valeur invalide — "
                     f"valeur par défaut {FALLBACK_TEMPERATURE_C:.0f} °C utilisée."
                 )
             if self._luminosity_fallback_used:
                 warnings.append(
-                    "Luminosité : erreur de lecture, "
+                    "Luminosité : erreur de lecture — "
                     f"valeur par défaut {FALLBACK_LUMINOSITY_PERCENT:.0f} % utilisée."
                 )
 
         if not self._distance_available or self._distance_sensor is None:
             warnings.append("Détecteur de distance non connecté.")
-        else:
-            # On ne peut pas savoir si la dernière lecture a échoué sans un flag
-            # (read_distance_cm retourne None en cas d'erreur). On n'ajoute pas
-            # d'avertissement dynamique pour une lecture échouée ponctuelle.
-            pass
 
         return warnings
 

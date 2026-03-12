@@ -5,11 +5,13 @@ Contrôleur principal : lit les capteurs, applique l'algorithme et pilote le mot
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 from algorithm import DoorOpeningAlgorithm, clamp
-from motor import MotorSimulator, MotorStatus
+from motor import MotorSimulator, MotorStatus, StepperMotorDriver
 from sensors import SensorManager, SensorReadings
+
+MotorType = Union[MotorSimulator, StepperMotorDriver]
 
 
 @dataclass(frozen=True)
@@ -26,7 +28,7 @@ class SystemSnapshot:
 class GreenhouseController:
     """Orchestration : capteurs -> calcul -> consigne moteur, sans dépendance à l'UI."""
 
-    def __init__(self, sensor_manager: SensorManager, motor: MotorSimulator) -> None:
+    def __init__(self, sensor_manager: SensorManager, motor: MotorType) -> None:
         self._sensor_manager = sensor_manager
         self._motor = motor
         self._mode = "auto"  # "auto" | "manual"

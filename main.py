@@ -18,7 +18,7 @@ from typing import Optional
 
 from algorithm import clamp
 from controller import GreenhouseController, SystemSnapshot
-from motor import MotorSimulator
+from motor import MotorSimulator, create_motor
 from sensors import SensorManager
 
 
@@ -32,7 +32,7 @@ class GreenhouseApp(tk.Tk):
         self.minsize(560, 320)
 
         self._sensor_manager = SensorManager()
-        self._motor = MotorSimulator(initial_opening_percent=0.0)
+        self._motor = create_motor(initial_opening_percent=0.0)
         self._controller = GreenhouseController(sensor_manager=self._sensor_manager, motor=self._motor)
 
         self._mode_var = tk.StringVar(value="auto")
@@ -56,7 +56,6 @@ class GreenhouseApp(tk.Tk):
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
 
-        # Cadre avec bordure bleu foncé
         border_frame = tk.Frame(self, bg="#1e3a5f", padx=2, pady=2)
         border_frame.grid(row=0, column=0, sticky="nsew")
         border_frame.columnconfigure(0, weight=1)
@@ -64,45 +63,51 @@ class GreenhouseApp(tk.Tk):
         main_frame = ttk.Frame(border_frame, padding=12)
         main_frame.grid(row=0, column=0, sticky="nsew")
         main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=0)
 
-        title = ttk.Label(main_frame, text="Contrôle d'une porte d'aération d'une serre", font=("TkDefaultFont", 14, "bold"))
-        title.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        # Titre centré
+        title = ttk.Label(
+            main_frame,
+            text="Contrôle d'une porte d'aération d'une serre",
+            font=("TkDefaultFont", 14, "bold"),
+        )
+        title.grid(row=0, column=0, columnspan=2, pady=(0, 8))
 
-        # ----- Section haute : gauche (infos) | droite (mode + barre ouverture) -----
-        top_row = ttk.Frame(main_frame)
-        top_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 8))
-        top_row.columnconfigure(0, weight=1)
-        top_row.columnconfigure(1, weight=0)
+        # ----- Colonne gauche (row 1) : Température, Luminosité, Ouverture auto -----
+        self._build_left_column(main_frame)
+        # ----- Colonne droite (row 1) : Mode Manuelle | Automatique, barre, Ouverture % -----
+        self._build_right_column(main_frame)
 
-        self._build_top_left_block(top_row)
-        self._build_top_right_block(top_row)
-
-        # ----- Section milieu : Contrôle + bouton Automatique, puis cadre Manuelle -----
+        # ----- Contrôle + cadre Manuelle (col 0) -----
         self._build_control_section(main_frame)
 
-        # ----- Section basse : Moteur/Direction (gauche) | Détecteur/Vitesse (droite) -----
+        # ----- Bas : Moteur/Direction (gauche) | Détecteur/Vitesse (droite) -----
         self._build_bottom_section(main_frame)
 
         self._manual_entry.bind("<Return>", lambda _event: self._on_apply_manual_opening_clicked())
 
+        # Zone avertissements (visible dès qu'il y a des messages)
         self._warnings_var = tk.StringVar(value="")
-        self._warnings_frame = ttk.LabelFrame(main_frame, text="Avertissements")
+        self._warnings_frame = ttk.LabelFrame(main_frame, text="Avertissements / Erreurs")
         self._warnings_label = ttk.Label(
             self._warnings_frame,
             textvariable=self._warnings_var,
             wraplength=500,
         )
-        self._warnings_label.grid(row=5, column=0, padx=8, pady=4, sticky="w")
+        self._warnings_label.grid(row=0, column=0, padx=8, pady=4, sticky="w")
         self._warnings_frame.grid(row=5, column=0, columnspan=2, padx=0, pady=6, sticky="ew")
         self._warnings_frame.grid_remove()
 
-        footer = ttk.Label(main_frame, text="Simulation PC" if not self._sensor_manager.is_hardware_available else "Raspberry Pi détecté")
+        footer = ttk.Label(
+            main_frame,
+            text="Simulation PC" if not self._sensor_manager.is_hardware_available else "Raspberry Pi détecté",
+        )
         footer.grid(row=6, column=0, columnspan=2, pady=(0, 0), sticky="w")
 
-    def _build_top_left_block(self, parent: ttk.Frame) -> None:
-        """Bloc gauche du haut : température, luminosité, ouverture automatique."""
+    def _build_left_column(self, parent: ttk.Frame) -> None:
+        """Colonne gauche : température, luminosité, ouverture automatique."""
         left = ttk.Frame(parent)
-        left.grid(row=0, column=0, sticky="nw")
+        left.grid(row=1, column=0, sticky="nw", pady=(0, 8))
         ttk.Label(left, text="Température interne ambiante :").grid(row=0, column=0, sticky="w")
         ttk.Label(left, textvariable=self._temperature_var).grid(row=0, column=1, sticky="w", padx=(8, 0))
         ttk.Label(left, text="Intensité lumineuse à l'interne :").grid(row=1, column=0, sticky="w")
@@ -110,18 +115,23 @@ class GreenhouseApp(tk.Tk):
         ttk.Label(left, text="Ouverture de la porte automatique :").grid(row=2, column=0, sticky="w")
         ttk.Label(left, textvariable=self._automatic_opening_var).grid(row=2, column=1, sticky="w", padx=(8, 0))
 
-    def _build_top_right_block(self, parent: ttk.Frame) -> None:
-        """Bloc droit du haut : Mode Manuelle | Automatique, barre d'ouverture verticale, Ouverture %."""
+    def _build_right_column(self, parent: ttk.Frame) -> None:
+        """Colonne droite : Mode Manuelle | Automatique (avec terme actif mis en évidence), barre, Ouverture %."""
         right = ttk.Frame(parent)
-        right.grid(row=0, column=1, sticky="nw", padx=(24, 0))
+        right.grid(row=1, column=1, sticky="nw", padx=(24, 0), pady=(0, 8))
 
-        mode_label = ttk.Label(right, text="Mode :")
-        mode_label.grid(row=0, column=0, sticky="w")
-        self._mode_display_var = tk.StringVar(value="Manuelle | Automatique")
-        ttk.Label(right, textvariable=self._mode_display_var).grid(row=0, column=1, sticky="w", padx=(8, 0))
+        ttk.Label(right, text="Mode :").grid(row=0, column=0, sticky="w")
+        mode_frame = ttk.Frame(right)
+        mode_frame.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        self._mode_manual_label = ttk.Label(mode_frame, text="Manuelle")
+        self._mode_manual_label.grid(row=0, column=0, sticky="w")
+        ttk.Label(mode_frame, text=" | ").grid(row=0, column=1, sticky="w")
+        self._mode_auto_label = ttk.Label(mode_frame, text="Automatique")
+        self._mode_auto_label.grid(row=0, column=2, sticky="w")
 
-        # Barre d'ouverture verticale type "pile" (segments)
-        self._opening_canvas = tk.Canvas(right, width=32, height=72, bg="white", highlightthickness=1, highlightbackground="gray")
+        self._opening_canvas = tk.Canvas(
+            right, width=32, height=72, bg="white", highlightthickness=1, highlightbackground="gray"
+        )
         self._opening_canvas.grid(row=1, column=0, columnspan=2, pady=(6, 4))
         self._draw_opening_bar(0.0)
 
@@ -152,18 +162,17 @@ class GreenhouseApp(tk.Tk):
                 c.create_rectangle(4, seg_bot - part, w - 4, seg_bot, outline="gray", fill="#e6c229")
 
     def _build_control_section(self, parent: ttk.Frame) -> None:
-        """Section Contrôle : label, bouton Automatique ou Manuelle, cadre manuel (Manuelle + 56 % + Ouvrir/Fermer)."""
+        """Section Contrôle (col 0) : label, bouton Automatique, Manuelle ; cadre manuel avec Ouvrir/Fermer côte à côte."""
         control_row = ttk.Frame(parent)
-        control_row.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 4))
+        control_row.grid(row=2, column=0, sticky="w", pady=(4, 4))
         ttk.Label(control_row, text="Contrôle :").grid(row=0, column=0, sticky="w", padx=(0, 8))
-
         self._auto_btn = ttk.Button(control_row, text="Automatique", command=self._on_auto_clicked)
         self._auto_btn.grid(row=0, column=1, padx=(0, 4))
         self._manual_btn = ttk.Button(control_row, text="Manuelle", command=self._on_manual_clicked)
         self._manual_btn.grid(row=0, column=2, padx=(0, 4))
 
         manual_box = ttk.LabelFrame(parent, text="")
-        manual_box.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(2, 8))
+        manual_box.grid(row=3, column=0, sticky="ew", pady=(2, 8))
         manual_box.columnconfigure(1, weight=0)
 
         self._manual_btn_in_box = ttk.Button(manual_box, text="Manuelle", command=self._on_manual_clicked)
@@ -171,15 +180,17 @@ class GreenhouseApp(tk.Tk):
         self._manual_entry = ttk.Entry(manual_box, width=6, textvariable=self._manual_percent_var)
         self._manual_entry.grid(row=0, column=1, padx=(0, 4), pady=(6, 4))
         ttk.Label(manual_box, text="%").grid(row=0, column=2, sticky="w", pady=(6, 4))
-        self._open_button = ttk.Button(manual_box, text="Ouvrir la porte", command=self._on_open_clicked)
-        self._open_button.grid(row=1, column=0, columnspan=3, sticky="w", padx=8, pady=(2, 2))
-        self._close_button = ttk.Button(manual_box, text="Fermer la porte", command=self._on_close_clicked)
-        self._close_button.grid(row=2, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 6))
+        btn_row = ttk.Frame(manual_box)
+        btn_row.grid(row=1, column=0, columnspan=3, sticky="w", padx=8, pady=(2, 6))
+        self._open_button = ttk.Button(btn_row, text="Ouvrir la porte", command=self._on_open_clicked)
+        self._open_button.grid(row=0, column=0, padx=(0, 8))
+        self._close_button = ttk.Button(btn_row, text="Fermer la porte", command=self._on_close_clicked)
+        self._close_button.grid(row=0, column=1, padx=0)
 
         self._manual_frame = manual_box
 
     def _build_bottom_section(self, parent: ttk.Frame) -> None:
-        """Section basse : gauche Moteur/Direction, droite Détecteur/Vitesse."""
+        """Section basse : gauche Moteur (En marche | En arrêt), Direction (Gauche | Droite) ; droite Détecteur, Vitesse."""
         bottom = ttk.Frame(parent)
         bottom.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 4))
         bottom.columnconfigure(0, weight=1)
@@ -188,9 +199,21 @@ class GreenhouseApp(tk.Tk):
         left = ttk.Frame(bottom)
         left.grid(row=0, column=0, sticky="w")
         ttk.Label(left, text="Moteur :").grid(row=0, column=0, sticky="w")
-        ttk.Label(left, textvariable=self._motor_state_var).grid(row=0, column=1, sticky="w", padx=(8, 16))
+        motor_frame = ttk.Frame(left)
+        motor_frame.grid(row=0, column=1, sticky="w", padx=(8, 16))
+        self._motor_run_label = ttk.Label(motor_frame, text="En marche")
+        self._motor_run_label.grid(row=0, column=0, sticky="w")
+        ttk.Label(motor_frame, text=" | ").grid(row=0, column=1, sticky="w")
+        self._motor_stop_label = ttk.Label(motor_frame, text="En arrêt")
+        self._motor_stop_label.grid(row=0, column=2, sticky="w")
         ttk.Label(left, text="Direction :").grid(row=1, column=0, sticky="w")
-        ttk.Label(left, textvariable=self._motor_direction_var).grid(row=1, column=1, sticky="w", padx=(8, 0))
+        dir_frame = ttk.Frame(left)
+        dir_frame.grid(row=1, column=1, sticky="w", padx=(8, 0))
+        self._dir_left_label = ttk.Label(dir_frame, text="Gauche")
+        self._dir_left_label.grid(row=0, column=0, sticky="w")
+        ttk.Label(dir_frame, text=" | ").grid(row=0, column=1, sticky="w")
+        self._dir_right_label = ttk.Label(dir_frame, text="Droite")
+        self._dir_right_label.grid(row=0, column=2, sticky="w")
 
         right = ttk.Frame(bottom)
         right.grid(row=0, column=1, sticky="w")
@@ -207,13 +230,28 @@ class GreenhouseApp(tk.Tk):
         self._open_button.configure(state=state)
         self._close_button.configure(state=state)
 
-        # Bouton "sélectionné" = désactivé visuellement (Automatique enfoncé en auto, Manuelle en manuel)
         self._auto_btn.configure(state="disabled" if not is_manual else "normal")
         self._manual_btn.configure(state="disabled" if is_manual else "normal")
         self._manual_btn_in_box.configure(state="disabled" if is_manual else "normal")
 
-        if hasattr(self, "_mode_display_var"):
-            self._mode_display_var.set("Manuelle | Automatique")
+        self._update_mode_highlight(is_manual)
+
+    def _update_mode_highlight(self, is_manual: bool) -> None:
+        """Met en évidence le mode actif (Manuelle ou Automatique) en gras."""
+        bold = ("TkDefaultFont", 9, "bold")
+        normal = ("TkDefaultFont", 9)
+        self._mode_manual_label.configure(font=bold if is_manual else normal)
+        self._mode_auto_label.configure(font=bold if not is_manual else normal)
+
+    def _update_motor_direction_highlight(self, is_running: bool, direction_label: str) -> None:
+        """Met en évidence Moteur (En marche / En arrêt) et Direction (Gauche / Droite)."""
+        bold = ("TkDefaultFont", 9, "bold")
+        normal = ("TkDefaultFont", 9)
+        self._motor_run_label.configure(font=bold if is_running else normal)
+        self._motor_stop_label.configure(font=bold if not is_running else normal)
+        is_left = direction_label == "Gauche"
+        self._dir_left_label.configure(font=bold if is_left else normal)
+        self._dir_right_label.configure(font=bold if not is_left else normal)
 
     def _on_auto_clicked(self) -> None:
         self._mode_var.set("auto")
@@ -271,18 +309,19 @@ class GreenhouseApp(tk.Tk):
         self._automatic_opening_var.set(f"{o_auto:.1f} %")
 
         motor = snapshot.motor_status
-        self._motor_state_var.set("En marche" if motor.is_running else "En arrêt")
-        self._motor_direction_var.set(motor.direction_label)
+        self._update_motor_direction_highlight(motor.is_running, motor.direction_label)
         self._speed_var.set(f"{motor.speed_rpm} tour/min")
 
-        self._distance_var.set(f"{snapshot.distance_cm:.0f} cm")
+        distance_text = "-- cm" if any("Détecteur de distance" in w for w in snapshot.warnings) else f"{snapshot.distance_cm:.0f} cm"
+        self._distance_var.set(distance_text)
         self._opening_var.set(f"{snapshot.current_opening_percent:.0f} %")
 
         self._draw_opening_bar(snapshot.current_opening_percent)
+        self._update_mode_highlight(self._mode_var.get() == "manual")
 
         if snapshot.warnings:
             self._warnings_var.set("\n".join(snapshot.warnings))
-            self._warnings_frame.grid(row=5, column=0, padx=12, pady=6, sticky="ew")
+            self._warnings_frame.grid(row=5, column=0, columnspan=2, padx=0, pady=6, sticky="ew")
         else:
             self._warnings_var.set("")
             self._warnings_frame.grid_remove()
