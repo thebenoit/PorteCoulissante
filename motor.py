@@ -118,8 +118,8 @@ class _InlineStepper:
         self._step_sequence = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         self._step_number = 0
         self._number_of_steps = number_of_steps
-        # ~20 rpm affiché → step_delay pour 32 steps/rev
-        rpm = 20.0
+        # ~60 rpm affiché → step_delay plus court pour 32 steps/rev
+        rpm = 60.0
         self._step_delay = 60.0 / (self._number_of_steps * rpm) if rpm > 0 else 0.01
 
     def set_speed_rpm(self, rpm: float) -> None:
