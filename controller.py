@@ -81,6 +81,13 @@ class GreenhouseController:
         lum = self._sensor_manager.read_luminosity_percent()
         real_distance_cm = self._sensor_manager.read_distance_cm()
 
+        # Synchroniser la position interne du moteur sur le capteur de distance pour éviter
+        # que le moteur croie être à 100 % (2048 pas) alors que la porte est à 7 cm.
+        if real_distance_cm is not None:
+            self._motor.sync_position_from_opening_percent(
+                compute_opening_percent_from_distance(real_distance_cm)
+            )
+
         automatic_opening = DoorOpeningAlgorithm.calculate_automatic_opening_percent(
             temp_c, lum
         )

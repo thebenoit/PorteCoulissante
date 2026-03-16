@@ -71,6 +71,10 @@ class MotorSimulator:
     def get_target_opening_percent(self) -> float:
         return self._target_opening
 
+    def sync_position_from_opening_percent(self, opening_percent: float) -> None:
+        """Recalibre la position interne sur une mesure externe (ex. capteur de distance)."""
+        self._current_opening = clamp(opening_percent, 0.0, 100.0)
+
     def update(self, dt_seconds: float) -> None:
         dt = max(0.0, float(dt_seconds))
         if dt <= 1e-9:
@@ -230,6 +234,13 @@ class StepperMotorDriver:
 
     def get_target_opening_percent(self) -> float:
         return self._target_opening
+
+    def sync_position_from_opening_percent(self, opening_percent: float) -> None:
+        """Recalibre la position interne (pas + ouverture) sur une mesure externe (ex. capteur de distance)."""
+        percent = clamp(opening_percent, 0.0, 100.0)
+        self._current_opening = percent
+        self._current_steps = int((percent / 100.0) * STEPS_FULL_TRAVEL)
+        self._current_steps = int(clamp(self._current_steps, 0, STEPS_FULL_TRAVEL))
 
     def update(self, dt_seconds: float) -> None:
         dt = self._normalize_dt(dt_seconds)
