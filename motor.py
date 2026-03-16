@@ -22,12 +22,14 @@ DEFAULT_STEPPER_PINS: Tuple[int, ...] = (18, 23, 21, 25)
 
 # Pas total pour un cycle 0 % → 100 % (course de la porte)
 STEPS_FULL_TRAVEL = 2048
-# Cadence de contrôle moteur (pas/s) pour un mouvement progressif et réactif
-STEPPER_TARGET_STEPS_PER_SECOND = 120.0
-# Limite de sécurité par update pour éviter un appel trop long
-MAX_STEPS_PER_UPDATE = 32
-# Nombre de pas minimum pour commencer à bouger (évite micro-oscillations)
-MIN_STEP_BUDGET_PER_UPDATE = 1
+# Configuration vitesse pour porte horizontale poulie/crémaillère (priorité réactivité)
+STEPPER_MIN_STEPS_PER_SECOND = 140.0
+STEPPER_MAX_STEPS_PER_SECOND = 360.0
+STEPPER_ACCELERATION_STEPS_PER_SECOND2 = 2200.0
+STEPPER_NEAR_TARGET_STEPS = 120
+STEPPER_STOP_DEADBAND_STEPS = 2
+# Limite de sécurité par update pour éviter un appel trop long / saccadé
+MAX_STEPS_PER_UPDATE = 96
 # Vitesse affichée (tour/min) quand le moteur tourne
 MOTOR_DISPLAY_RPM = 20
 
@@ -126,16 +128,25 @@ def _create_stepper_output_devices(pins: Tuple[int, ...]) -> Optional[List[Any]]
 class _InlineStepper:
     """
     Moteur pas-à-pas 4 phases (style 28BYJ-48), même logique que Freenove gpiostepper.
-    Séquence demi-pas : 4 pas = un cycle.
+    Séquence demi-pas (8 phases) pour un mouvement plus fluide.
     """
 
-    def __init__(self, motor_pins: List[Any], number_of_steps: int = 32) -> None:
+    def __init__(self, motor_pins: List[Any], number_of_steps: int = 64) -> None:
         self._pins = motor_pins
         self._pin_count = len(motor_pins)
-        self._step_sequence = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        self._step_sequence = [
+            [1, 0, 0, 0],
+            [1, 1, 0, 0],
+            [0, 1, 0, 0],
+            [0, 1, 1, 0],
+            [0, 0, 1, 0],
+            [0, 0, 1, 1],
+            [0, 0, 0, 1],
+            [1, 0, 0, 1],
+        ]
         self._step_number = 0
         self._number_of_steps = number_of_steps
-        # RPM interne plus élevé → step_delay plus court pour 32 steps/rev
+        # RPM interne plus élevé → step_delay plus court pour séquence 64 steps/rev
         rpm = 150.0
         self._step_delay = 60.0 / (self._number_of_steps * rpm) if rpm > 0 else 0.01
 
@@ -196,7 +207,7 @@ class StepperMotorDriver:
         self._stepper: Optional[_InlineStepper] = None
         # Position en pas (0 = 0 %, STEPS_FULL_TRAVEL = 100 %)
         self._current_steps = int((self._current_opening / 100.0) * STEPS_FULL_TRAVEL)
-        self._target_steps_per_second = STEPPER_TARGET_STEPS_PER_SECOND
+        self._current_speed_steps_per_second = STEPPER_MIN_STEPS_PER_SECOND
 
         devices = _create_stepper_output_devices(pins)
         if devices is not None:
@@ -220,7 +231,8 @@ class StepperMotorDriver:
         return self._target_opening
 
     def update(self, dt_seconds: float) -> None:
-        if not self._is_update_allowed(dt_seconds):
+        dt = self._normalize_dt(dt_seconds)
+        if not self._is_update_allowed(dt):
             return
 
         target_steps = self._convert_opening_percent_to_steps(self._target_opening)
@@ -229,7 +241,8 @@ class StepperMotorDriver:
             self._sync_at_target_position(target_steps)
             return
 
-        steps_budget = self._compute_step_budget(dt_seconds)
+        self._adapt_stepper_speed(dt, delta_steps)
+        steps_budget = self._compute_step_budget(dt)
         steps_to_do = self._compute_steps_to_execute(delta_steps, steps_budget)
         if steps_to_do == 0:
             self._mark_motor_running_without_step(delta_steps)
@@ -240,15 +253,17 @@ class StepperMotorDriver:
         self._update_running_motor_status(steps_to_do)
         self._log_movement(steps_to_do)
 
-    def _is_update_allowed(self, dt_seconds: float) -> bool:
-        dt = max(0.0, float(dt_seconds))
+    def _normalize_dt(self, dt_seconds: float) -> float:
+        return max(0.0, float(dt_seconds))
+
+    def _is_update_allowed(self, dt: float) -> bool:
         return dt > 1e-9 and self._stepper is not None
 
     def _convert_opening_percent_to_steps(self, opening_percent: float) -> int:
         return int((opening_percent / 100.0) * STEPS_FULL_TRAVEL)
 
     def _is_target_reached(self, delta_steps: int) -> bool:
-        return abs(delta_steps) == 0
+        return abs(delta_steps) <= STEPPER_STOP_DEADBAND_STEPS
 
     def _sync_at_target_position(self, target_steps: int) -> None:
         self._current_steps = int(clamp(target_steps, 0, STEPS_FULL_TRAVEL))
@@ -266,10 +281,26 @@ class StepperMotorDriver:
             self._last_motor_status.direction_label,
         )
 
-    def _compute_step_budget(self, dt_seconds: float) -> int:
-        unclamped_budget = int(self._target_steps_per_second * max(0.0, dt_seconds))
-        bounded_budget = int(clamp(unclamped_budget, MIN_STEP_BUDGET_PER_UPDATE, MAX_STEPS_PER_UPDATE))
-        return bounded_budget
+    def _adapt_stepper_speed(self, dt: float, delta_steps: int) -> None:
+        target_speed = self._compute_target_speed_steps_per_second(delta_steps)
+        self._current_speed_steps_per_second = self._compute_next_speed_steps_per_second(dt, target_speed)
+        self._stepper.set_speed_rpm(self._compute_stepper_rpm())
+
+    def _compute_target_speed_steps_per_second(self, delta_steps: int) -> float:
+        if abs(delta_steps) <= STEPPER_NEAR_TARGET_STEPS:
+            return STEPPER_MIN_STEPS_PER_SECOND
+        return STEPPER_MAX_STEPS_PER_SECOND
+
+    def _compute_next_speed_steps_per_second(self, dt: float, target_speed: float) -> float:
+        max_speed_delta = STEPPER_ACCELERATION_STEPS_PER_SECOND2 * dt
+        speed_error = target_speed - self._current_speed_steps_per_second
+        clamped_delta = clamp(speed_error, -max_speed_delta, max_speed_delta)
+        new_speed = self._current_speed_steps_per_second + clamped_delta
+        return float(clamp(new_speed, STEPPER_MIN_STEPS_PER_SECOND, STEPPER_MAX_STEPS_PER_SECOND))
+
+    def _compute_step_budget(self, dt: float) -> int:
+        unclamped_budget = int(self._current_speed_steps_per_second * dt)
+        return int(clamp(unclamped_budget, 1, MAX_STEPS_PER_UPDATE))
 
     def _compute_steps_to_execute(self, delta_steps: int, step_budget: int) -> int:
         return int(clamp(delta_steps, -step_budget, step_budget))
@@ -307,7 +338,9 @@ class StepperMotorDriver:
         )
 
     def _compute_stepper_rpm(self) -> float:
-        return (self._target_steps_per_second * 60.0) / 32.0
+        if self._stepper is None:
+            return 0.0
+        return (self._current_speed_steps_per_second * 60.0) / float(self._stepper._number_of_steps)
 
     def get_motor_status(self) -> MotorStatus:
         return self._last_motor_status

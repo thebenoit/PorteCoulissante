@@ -21,7 +21,7 @@ from controller import GreenhouseController, SystemSnapshot
 from motor import MotorSimulator, create_motor
 from sensors import SensorManager
 
-UI_TICK_INTERVAL_MS = 200
+UI_TICK_INTERVAL_MS = 120
 
 
 class GreenhouseApp(tk.Tk):
