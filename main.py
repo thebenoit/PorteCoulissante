@@ -338,7 +338,7 @@ class GreenhouseApp(tk.Tk):
 
         self._temperature_var.set(f"{t:.1f} °C")
         self._luminosity_var.set(f"{l:.0f} (0-100)")
-        self._automatic_opening_var.set(f"{o_auto:.1f} %")
+        self._automatic_opening_var.set(self._format_automatic_opening_display(o_auto))
 
         motor = snapshot.motor_status
         self._update_motor_direction_highlight(motor.is_running, motor.direction_label)
@@ -367,12 +367,22 @@ class GreenhouseApp(tk.Tk):
 
     def _resolve_automatic_opening_to_display(self, snapshot: SystemSnapshot) -> float:
         """
-        Affiche en mode auto la vraie consigne appliquée au moteur.
-        On évite ainsi un affichage figé sans lien avec la position ciblée.
+        En mode auto : affiche la consigne appliquée au moteur.
+        En mode manuel : affiche la consigne que l'algorithme (T+L) calculerait.
         """
         if self._mode_var.get() == "auto":
             return snapshot.target_opening_percent
         return snapshot.automatic_opening_percent
+
+    def _format_automatic_opening_display(self, percent: float) -> str:
+        """
+        Évite la confusion en mode manuel : on précise que la valeur affichée
+        est celle que donnerait le mode automatique, pas la position actuelle.
+        """
+        base = f"{percent:.1f} %"
+        if self._mode_var.get() == "manual":
+            return f"{base} (si mode auto)"
+        return base
 
     def _format_speed_display_text(self, measured_speed_rpm: int) -> str:
         """
