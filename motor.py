@@ -101,7 +101,7 @@ class MotorSimulator:
         self._current_opening = clamp(self._current_opening + move, 0.0, 100.0)
 
         direction = "Droite" if move > 0 else "Gauche"
-        speed_rpm = 20  # valeur fixe de démo, comme l'exemple du sujet
+        speed_rpm = MOTOR_DISPLAY_RPM  # valeur fixe de démo, comme l'exemple du sujet
         self._last_motor_status = MotorStatus(is_running=True, direction_label=direction, speed_rpm=speed_rpm)
         logger.info(
             "MotorSimulator en mouvement — direction=%s, ouverture actuelle=%.1f%%, cible=%.1f%%, delta=%.2f%%",

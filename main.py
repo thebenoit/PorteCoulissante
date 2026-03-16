@@ -44,12 +44,11 @@ class GreenhouseApp(tk.Tk):
 
         self._temperature_var = tk.StringVar(value="--")
         self._luminosity_var = tk.StringVar(value="--")
-        # Ouverture automatique = sortie de l'algorithme (O = O_T × F_L). "--" jusqu'au premier snapshot, jamais 0 % par défaut.
         self._automatic_opening_var = tk.StringVar(value="--")
         self._motor_state_var = tk.StringVar(value="Arrêt")
         self._motor_direction_var = tk.StringVar(value="--")
         self._distance_var = tk.StringVar(value="--")
-        self._speed_var = tk.StringVar(value=f"{MOTOR_DISPLAY_RPM} tour/min")
+        self._speed_var = tk.StringVar(value=f"{MOTOR_DISPLAY_RPM} tour/min (constante)")
         self._opening_var = tk.StringVar(value="0")
 
         self._build_ui()
@@ -90,6 +89,8 @@ class GreenhouseApp(tk.Tk):
         self._build_bottom_section(main_frame)
 
         self._manual_entry.bind("<Return>", lambda _event: self._on_apply_manual_opening_clicked())
+        self._manual_entry.bind("<KeyRelease>", lambda _event: self._sync_manual_target_from_entry())
+        self._manual_entry.bind("<FocusOut>", lambda _event: self._sync_manual_target_from_entry())
 
         # Zone avertissements (visible dès qu'il y a des messages)
         self._warnings_var = tk.StringVar(value="")
@@ -185,10 +186,6 @@ class GreenhouseApp(tk.Tk):
         self._manual_entry = ttk.Entry(manual_box, width=6, textvariable=self._manual_percent_var)
         self._manual_entry.grid(row=0, column=1, padx=(0, 4), pady=(6, 4))
         ttk.Label(manual_box, text="%").grid(row=0, column=2, sticky="w", pady=(6, 4))
-        self._apply_manual_btn = ttk.Button(
-            manual_box, text="Appliquer", command=self._on_apply_manual_opening_clicked
-        )
-        self._apply_manual_btn.grid(row=0, column=3, padx=(4, 8), pady=(6, 4))
         btn_row = ttk.Frame(manual_box)
         btn_row.grid(row=1, column=0, columnspan=3, sticky="w", padx=8, pady=(2, 6))
         self._open_button = ttk.Button(btn_row, text="Ouvrir la porte", command=self._on_open_clicked)
@@ -238,7 +235,6 @@ class GreenhouseApp(tk.Tk):
         self._manual_entry.configure(state=state)
         self._open_button.configure(state=state)
         self._close_button.configure(state=state)
-        self._apply_manual_btn.configure(state=state)
 
         self._auto_btn.configure(state="disabled" if not is_manual else "normal")
         self._manual_btn.configure(state="disabled" if is_manual else "normal")
@@ -273,6 +269,7 @@ class GreenhouseApp(tk.Tk):
         self._logger.info("Bouton cliqué: passage en mode manuel.")
         self._mode_var.set("manual")
         self._controller.set_mode("manual")
+        self._sync_manual_target_from_entry()
         self._apply_mode_to_ui()
 
     def _on_apply_manual_opening_clicked(self) -> None:
@@ -286,6 +283,18 @@ class GreenhouseApp(tk.Tk):
             self.bell()
             return
         self._logger.info("Action: consigne ouverture manuelle fixée à %.1f%%.", value)
+        self._controller.set_manual_target_opening_percent(value)
+
+    def _sync_manual_target_from_entry(self) -> None:
+        """
+        Met à jour la consigne manuelle à partir du champ texte.
+        En mode manuel, saisir "56" suffit pour lancer le déplacement vers 56 %.
+        """
+        if self._mode_var.get() != "manual":
+            return
+        value = self._parse_manual_opening_percent_or_none()
+        if value is None:
+            return
         self._controller.set_manual_target_opening_percent(value)
 
     def _on_open_clicked(self) -> None:
@@ -309,6 +318,7 @@ class GreenhouseApp(tk.Tk):
         return clamp(value, 0.0, 100.0)
 
     def _tick(self) -> None:
+        self._sync_manual_target_from_entry()
         now = time.monotonic()
         dt = now - self._last_tick
         self._last_tick = now
@@ -324,16 +334,15 @@ class GreenhouseApp(tk.Tk):
     def _refresh_ui(self, snapshot: SystemSnapshot) -> None:
         t = snapshot.readings.temperature_c
         l = snapshot.readings.luminosity_percent
-        o_auto = snapshot.automatic_opening_percent
+        o_auto = self._resolve_automatic_opening_to_display(snapshot)
 
         self._temperature_var.set(f"{t:.1f} °C")
         self._luminosity_var.set(f"{l:.0f} (0-100)")
-        # Toujours la valeur calculée par l'algorithme (0 % seulement si T < 20 °C).
         self._automatic_opening_var.set(f"{o_auto:.1f} %")
 
         motor = snapshot.motor_status
         self._update_motor_direction_highlight(motor.is_running, motor.direction_label)
-        self._speed_var.set(f"{MOTOR_DISPLAY_RPM} tour/min")
+        self._speed_var.set(self._format_speed_display_text(motor.speed_rpm))
 
         distance_text = "-- cm" if any("Détecteur de distance" in w for w in snapshot.warnings) else f"{snapshot.distance_cm:.0f} cm"
         self._distance_var.set(distance_text)
@@ -355,6 +364,23 @@ class GreenhouseApp(tk.Tk):
         else:
             self._warnings_var.set("")
             self._warnings_frame.grid_remove()
+
+    def _resolve_automatic_opening_to_display(self, snapshot: SystemSnapshot) -> float:
+        """
+        Affiche en mode auto la vraie consigne appliquée au moteur.
+        On évite ainsi un affichage figé sans lien avec la position ciblée.
+        """
+        if self._mode_var.get() == "auto":
+            return snapshot.target_opening_percent
+        return snapshot.automatic_opening_percent
+
+    def _format_speed_display_text(self, measured_speed_rpm: int) -> str:
+        """
+        Affiche la vitesse comme valeur de référence constante.
+        Le moteur indique 0 à l'arrêt, mais la vitesse nominale reste fixe dans le sujet.
+        """
+        speed_to_show = measured_speed_rpm if measured_speed_rpm > 0 else MOTOR_DISPLAY_RPM
+        return f"{speed_to_show} tour/min (constante)"
 
 
 def main() -> None:
