@@ -22,14 +22,14 @@ DEFAULT_STEPPER_PINS: Tuple[int, ...] = (18, 23, 21, 25)
 
 # Pas total pour un cycle 0 % → 100 % (course de la porte)
 STEPS_FULL_TRAVEL = 2048
-# Vitesse adaptée à un moteur lent (28BYJ-48) : trop rapide = la porte ne suit pas, jitter gauche/droite
-STEPPER_MIN_STEPS_PER_SECOND = 12.0
-STEPPER_MAX_STEPS_PER_SECOND = 36.0
-STEPPER_ACCELERATION_STEPS_PER_SECOND2 = 25.0
-STEPPER_NEAR_TARGET_STEPS = 80
+# Vitesse intermédiaire pour 28BYJ-48 avec courroie : assez lent pour l'élan, pas trop pour avancer
+STEPPER_MIN_STEPS_PER_SECOND = 45.0
+STEPPER_MAX_STEPS_PER_SECOND = 120.0
+STEPPER_ACCELERATION_STEPS_PER_SECOND2 = 150.0
+STEPPER_NEAR_TARGET_STEPS = 100
 STEPPER_STOP_DEADBAND_STEPS = 2
-# Petits lots de pas par update pour laisser le temps au moteur de bouger
-MAX_STEPS_PER_UPDATE = 12
+# Lots de pas par update : assez pour donner de l'élan
+MAX_STEPS_PER_UPDATE = 40
 # Vitesse affichée (tour/min) quand le moteur tourne
 MOTOR_DISPLAY_RPM = 20
 
@@ -146,9 +146,9 @@ class _InlineStepper:
         ]
         self._step_number = 0
         self._number_of_steps = number_of_steps
-        # Vitesse initiale lente pour 28BYJ-48 (sinon le moteur n'a pas le temps de bouger)
-        rpm = 15.0
-        self._step_delay = 60.0 / (self._number_of_steps * rpm) if rpm > 0 else 0.1
+        # Vitesse initiale modérée pour 28BYJ-48 avec courroie
+        rpm = 60.0
+        self._step_delay = 60.0 / (self._number_of_steps * rpm) if rpm > 0 else 0.02
 
     def set_speed_rpm(self, rpm: float) -> None:
         if rpm <= 0:
