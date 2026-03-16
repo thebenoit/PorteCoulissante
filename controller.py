@@ -9,7 +9,13 @@ from typing import Optional, Union
 
 from algorithm import DoorOpeningAlgorithm, clamp
 from motor import MotorSimulator, MotorStatus, StepperMotorDriver
-from sensors import SensorManager, SensorReadings, compute_door_position_from_distance
+from sensors import (
+    CLOSED_DISTANCE_CM,
+    OPEN_DISTANCE_CM,
+    SensorManager,
+    SensorReadings,
+    compute_door_position_from_distance,
+)
 
 MotorType = Union[MotorSimulator, StepperMotorDriver]
 
@@ -52,17 +58,43 @@ class GreenhouseController:
     def set_target_fully_closed(self) -> None:
         self.set_manual_target_opening_percent(0.0)
 
+    def _effective_manual_target_with_distance(
+        self, real_distance_cm: float, current_opening_percent: float
+    ) -> float:
+        """
+        En mode manuel, pour « Ouvrir » (100 %) ou « Fermer » (0 %), utilise le capteur
+        de distance pour arrêter le moteur : fermé à 8 cm, ouvert à 14 cm.
+        """
+        if self._manual_target_opening <= 0.0:
+            if real_distance_cm <= CLOSED_DISTANCE_CM:
+                return current_opening_percent
+            return 0.0
+        if self._manual_target_opening >= 100.0:
+            if real_distance_cm >= OPEN_DISTANCE_CM:
+                return current_opening_percent
+            return 100.0
+        return self._manual_target_opening
+
     def step_once(self, dt_seconds: float = 1.0) -> SystemSnapshot:
         temp_c = self._sensor_manager.read_temperature_c()
         lum = self._sensor_manager.read_luminosity_percent()
+        real_distance_cm = self._sensor_manager.read_distance_cm()
 
         automatic_opening = DoorOpeningAlgorithm.calculate_automatic_opening_percent(temp_c, lum)
-        target_opening = automatic_opening if self._mode == "auto" else self._manual_target_opening
+        if self._mode == "auto":
+            target_opening = automatic_opening
+        else:
+            current_opening = self._motor.get_current_opening_percent()
+            if real_distance_cm is not None:
+                target_opening = self._effective_manual_target_with_distance(
+                    real_distance_cm, current_opening
+                )
+            else:
+                target_opening = self._manual_target_opening
 
         self._motor.set_target_opening_percent(target_opening)
         self._motor.update(dt_seconds)
 
-        real_distance_cm = self._sensor_manager.read_distance_cm()
         distance_cm = (
             real_distance_cm
             if real_distance_cm is not None

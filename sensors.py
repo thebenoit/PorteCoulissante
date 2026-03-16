@@ -45,9 +45,9 @@ ULTRASONIC_MAX_DISTANCE_M = 3.0
 
 # Calibration distance porte (capteur ultrason) :
 # - À 8 cm la porte est considérée comme complètement fermée.
-# - À 13 cm la porte est considérée comme complètement ouverte.
+# - À 14 cm la porte est considérée comme complètement ouverte.
 CLOSED_DISTANCE_CM = 8.0
-OPEN_DISTANCE_CM = 13.0
+OPEN_DISTANCE_CM = 14.0
 # Tolérances pour considérer "bien fermé" / "bien ouvert"
 CLOSED_TOLERANCE_CM = 0.5
 OPEN_TOLERANCE_CM = 0.5
