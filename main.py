@@ -18,7 +18,7 @@ from typing import Optional
 
 from algorithm import clamp
 from controller import GreenhouseController, SystemSnapshot
-from motor import MotorSimulator, create_motor
+from motor import MOTOR_DISPLAY_RPM, MotorSimulator, create_motor
 from sensors import SensorManager, compute_opening_percent_from_distance
 
 UI_TICK_INTERVAL_MS = 120
@@ -44,11 +44,12 @@ class GreenhouseApp(tk.Tk):
 
         self._temperature_var = tk.StringVar(value="--")
         self._luminosity_var = tk.StringVar(value="--")
+        # Ouverture automatique = sortie de l'algorithme (O = O_T × F_L). "--" jusqu'au premier snapshot, jamais 0 % par défaut.
         self._automatic_opening_var = tk.StringVar(value="--")
         self._motor_state_var = tk.StringVar(value="Arrêt")
         self._motor_direction_var = tk.StringVar(value="--")
         self._distance_var = tk.StringVar(value="--")
-        self._speed_var = tk.StringVar(value="0")
+        self._speed_var = tk.StringVar(value=f"{MOTOR_DISPLAY_RPM} tour/min")
         self._opening_var = tk.StringVar(value="0")
 
         self._build_ui()
@@ -184,6 +185,10 @@ class GreenhouseApp(tk.Tk):
         self._manual_entry = ttk.Entry(manual_box, width=6, textvariable=self._manual_percent_var)
         self._manual_entry.grid(row=0, column=1, padx=(0, 4), pady=(6, 4))
         ttk.Label(manual_box, text="%").grid(row=0, column=2, sticky="w", pady=(6, 4))
+        self._apply_manual_btn = ttk.Button(
+            manual_box, text="Appliquer", command=self._on_apply_manual_opening_clicked
+        )
+        self._apply_manual_btn.grid(row=0, column=3, padx=(4, 8), pady=(6, 4))
         btn_row = ttk.Frame(manual_box)
         btn_row.grid(row=1, column=0, columnspan=3, sticky="w", padx=8, pady=(2, 6))
         self._open_button = ttk.Button(btn_row, text="Ouvrir la porte", command=self._on_open_clicked)
@@ -233,6 +238,7 @@ class GreenhouseApp(tk.Tk):
         self._manual_entry.configure(state=state)
         self._open_button.configure(state=state)
         self._close_button.configure(state=state)
+        self._apply_manual_btn.configure(state=state)
 
         self._auto_btn.configure(state="disabled" if not is_manual else "normal")
         self._manual_btn.configure(state="disabled" if is_manual else "normal")
@@ -322,11 +328,12 @@ class GreenhouseApp(tk.Tk):
 
         self._temperature_var.set(f"{t:.1f} °C")
         self._luminosity_var.set(f"{l:.0f} (0-100)")
+        # Toujours la valeur calculée par l'algorithme (0 % seulement si T < 20 °C).
         self._automatic_opening_var.set(f"{o_auto:.1f} %")
 
         motor = snapshot.motor_status
         self._update_motor_direction_highlight(motor.is_running, motor.direction_label)
-        self._speed_var.set(f"{motor.speed_rpm} tour/min")
+        self._speed_var.set(f"{MOTOR_DISPLAY_RPM} tour/min")
 
         distance_text = "-- cm" if any("Détecteur de distance" in w for w in snapshot.warnings) else f"{snapshot.distance_cm:.0f} cm"
         self._distance_var.set(distance_text)
