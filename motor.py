@@ -23,7 +23,7 @@ DEFAULT_STEPPER_PINS: Tuple[int, ...] = (18, 23, 21, 25)
 # Pas total pour un cycle 0 % → 100 % (course de la porte)
 STEPS_FULL_TRAVEL = 2048
 # Pas max exécutés par appel update() pour ne pas bloquer l'UI
-MAX_STEPS_PER_UPDATE = 200
+MAX_STEPS_PER_UPDATE = 512
 # Vitesse affichée (tour/min) quand le moteur tourne
 MOTOR_DISPLAY_RPM = 20
 
@@ -118,8 +118,8 @@ class _InlineStepper:
         self._step_sequence = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         self._step_number = 0
         self._number_of_steps = number_of_steps
-        # ~60 rpm affiché → step_delay plus court pour 32 steps/rev
-        rpm = 100.0
+        # RPM interne plus élevé → step_delay plus court pour 32 steps/rev
+        rpm = 150.0
         self._step_delay = 60.0 / (self._number_of_steps * rpm) if rpm > 0 else 0.01
 
     def set_speed_rpm(self, rpm: float) -> None:
