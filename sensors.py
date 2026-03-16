@@ -43,6 +43,31 @@ ULTRASONIC_TRIGGER_PIN = 20
 ULTRASONIC_ECHO_PIN = 24
 ULTRASONIC_MAX_DISTANCE_M = 3.0
 
+# Calibration distance porte (capteur ultrason) :
+# - À 8 cm la porte est considérée comme complètement fermée.
+# - À 13 cm la porte est considérée comme complètement ouverte.
+CLOSED_DISTANCE_CM = 8.0
+OPEN_DISTANCE_CM = 13.0
+# Tolérances pour considérer "bien fermé" / "bien ouvert"
+CLOSED_TOLERANCE_CM = 0.5
+OPEN_TOLERANCE_CM = 0.5
+
+
+def compute_door_position_from_distance(distance_cm: float) -> float:
+    """
+    Convertit une distance en cm mesurée par l'ultrason en position normalisée de la porte.
+
+    - 0.0 → porte fermée (≈ CLOSED_DISTANCE_CM)
+    - 1.0 → porte ouverte (≈ OPEN_DISTANCE_CM)
+    - Interpolation linéaire entre les deux valeurs.
+    - En dehors de la plage, on rabat (clamp) à 0.0 ou 1.0.
+    """
+    span = OPEN_DISTANCE_CM - CLOSED_DISTANCE_CM
+    if span <= 0:
+        return 0.0
+    normalized = (distance_cm - CLOSED_DISTANCE_CM) / span
+    return float(clamp(normalized, 0.0, 1.0))
+
 
 class RandomWalkSignal:
     """Générateur simple de signaux réalistes (variation progressive) pour la simulation."""

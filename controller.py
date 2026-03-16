@@ -9,7 +9,7 @@ from typing import Optional, Union
 
 from algorithm import DoorOpeningAlgorithm, clamp
 from motor import MotorSimulator, MotorStatus, StepperMotorDriver
-from sensors import SensorManager, SensorReadings
+from sensors import SensorManager, SensorReadings, compute_door_position_from_distance
 
 MotorType = Union[MotorSimulator, StepperMotorDriver]
 
@@ -22,6 +22,7 @@ class SystemSnapshot:
     current_opening_percent: float
     motor_status: MotorStatus
     distance_cm: float
+    door_position_normalized: float
     warnings: tuple[str, ...]
 
 
@@ -67,6 +68,7 @@ class GreenhouseController:
             if real_distance_cm is not None
             else self._motor.get_distance_cm()
         )
+        door_position_normalized = compute_door_position_from_distance(distance_cm)
         warnings = tuple(self._sensor_manager.get_warnings())
 
         snapshot = SystemSnapshot(
@@ -76,6 +78,7 @@ class GreenhouseController:
             current_opening_percent=self._motor.get_current_opening_percent(),
             motor_status=self._motor.get_motor_status(),
             distance_cm=distance_cm,
+            door_position_normalized=door_position_normalized,
             warnings=warnings,
         )
         self._last_snapshot = snapshot
