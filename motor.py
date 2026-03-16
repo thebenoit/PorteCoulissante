@@ -23,7 +23,7 @@ DEFAULT_STEPPER_PINS: Tuple[int, ...] = (18, 23, 21, 25)
 # Pas total pour un cycle 0 % → 100 % (course de la porte)
 STEPS_FULL_TRAVEL = 2048
 # Pas max exécutés par appel update() pour ne pas bloquer l'UI
-MAX_STEPS_PER_UPDATE = 40
+MAX_STEPS_PER_UPDATE = 200
 # Vitesse affichée (tour/min) quand le moteur tourne
 MOTOR_DISPLAY_RPM = 20
 
