@@ -44,10 +44,10 @@ ULTRASONIC_ECHO_PIN = 24
 ULTRASONIC_MAX_DISTANCE_M = 3.0
 
 # Calibration distance porte (capteur ultrason) :
-# - À 8 cm la porte est considérée comme complètement fermée.
-# - À 14 cm la porte est considérée comme complètement ouverte.
-CLOSED_DISTANCE_CM = 8.0
-OPEN_DISTANCE_CM = 14.0
+# - 3 cm = porte complètement fermée (0 % ouverture).
+# - 9 cm = porte complètement ouverte (100 % ouverture).
+CLOSED_DISTANCE_CM = 3.0
+OPEN_DISTANCE_CM = 9.0
 # Tolérances pour considérer "bien fermé" / "bien ouvert"
 CLOSED_TOLERANCE_CM = 0.5
 OPEN_TOLERANCE_CM = 0.5
@@ -55,18 +55,28 @@ OPEN_TOLERANCE_CM = 0.5
 
 def compute_door_position_from_distance(distance_cm: float) -> float:
     """
-    Convertit une distance en cm mesurée par l'ultrason en position normalisée de la porte.
+    Convertit une distance en cm mesurée par l'ultrason en position normalisée (0.0–1.0).
 
-    - 0.0 → porte fermée (≈ CLOSED_DISTANCE_CM)
-    - 1.0 → porte ouverte (≈ OPEN_DISTANCE_CM)
-    - Interpolation linéaire entre les deux valeurs.
-    - En dehors de la plage, on rabat (clamp) à 0.0 ou 1.0.
+    - 0.0 → porte fermée (3 cm)
+    - 1.0 → porte ouverte (9 cm)
+    - Interpolation linéaire entre les deux. En dehors de la plage, clamp à 0.0 ou 1.0.
     """
     span = OPEN_DISTANCE_CM - CLOSED_DISTANCE_CM
     if span <= 0:
         return 0.0
     normalized = (distance_cm - CLOSED_DISTANCE_CM) / span
     return float(clamp(normalized, 0.0, 1.0))
+
+
+def compute_opening_percent_from_distance(distance_cm: float) -> float:
+    """
+    Calcule le pourcentage d'ouverture de la porte à partir de la distance (ultrason).
+
+    - 3 cm → 0 % ouverture (fermée)
+    - 9 cm → 100 % ouverture (ouverte)
+    - À tout moment, l'application utilise cette valeur pour afficher l'ouverture réelle.
+    """
+    return compute_door_position_from_distance(distance_cm) * 100.0
 
 
 class RandomWalkSignal:

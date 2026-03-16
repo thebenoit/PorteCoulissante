@@ -15,6 +15,7 @@ from sensors import (
     SensorManager,
     SensorReadings,
     compute_door_position_from_distance,
+    compute_opening_percent_from_distance,
 )
 
 MotorType = Union[MotorSimulator, StepperMotorDriver]
@@ -63,7 +64,7 @@ class GreenhouseController:
     ) -> float:
         """
         En mode manuel, pour « Ouvrir » (100 %) ou « Fermer » (0 %), utilise le capteur
-        de distance pour arrêter le moteur : fermé à 8 cm, ouvert à 14 cm.
+        de distance pour arrêter le moteur : fermé à 3 cm, ouvert à 9 cm.
         """
         if self._manual_target_opening <= 0.0:
             if real_distance_cm <= CLOSED_DISTANCE_CM:
@@ -80,11 +81,17 @@ class GreenhouseController:
         lum = self._sensor_manager.read_luminosity_percent()
         real_distance_cm = self._sensor_manager.read_distance_cm()
 
-        automatic_opening = DoorOpeningAlgorithm.calculate_automatic_opening_percent(temp_c, lum)
+        automatic_opening = DoorOpeningAlgorithm.calculate_automatic_opening_percent(
+            temp_c, lum
+        )
         if self._mode == "auto":
             target_opening = automatic_opening
         else:
-            current_opening = self._motor.get_current_opening_percent()
+            current_opening = (
+                compute_opening_percent_from_distance(real_distance_cm)
+                if real_distance_cm is not None
+                else self._motor.get_current_opening_percent()
+            )
             if real_distance_cm is not None:
                 target_opening = self._effective_manual_target_with_distance(
                     real_distance_cm, current_opening
@@ -101,13 +108,19 @@ class GreenhouseController:
             else self._motor.get_distance_cm()
         )
         door_position_normalized = compute_door_position_from_distance(distance_cm)
+        # Ouverture actuelle : toujours dérivée de la distance (3 cm = 0 %, 9 cm = 100 %)
+        current_opening_percent = (
+            compute_opening_percent_from_distance(distance_cm)
+            if real_distance_cm is not None
+            else self._motor.get_current_opening_percent()
+        )
         warnings = tuple(self._sensor_manager.get_warnings())
 
         snapshot = SystemSnapshot(
             readings=SensorReadings(temperature_c=temp_c, luminosity_percent=lum),
             automatic_opening_percent=automatic_opening,
             target_opening_percent=target_opening,
-            current_opening_percent=self._motor.get_current_opening_percent(),
+            current_opening_percent=current_opening_percent,
             motor_status=self._motor.get_motor_status(),
             distance_cm=distance_cm,
             door_position_normalized=door_position_normalized,
@@ -118,4 +131,3 @@ class GreenhouseController:
 
     def get_last_snapshot(self) -> Optional[SystemSnapshot]:
         return self._last_snapshot
-
