@@ -22,14 +22,14 @@ DEFAULT_STEPPER_PINS: Tuple[int, ...] = (18, 23, 21, 25)
 
 # Pas total pour un cycle 0 % → 100 % (course de la porte)
 STEPS_FULL_TRAVEL = 2048
-# Vitesse rapide pour 28BYJ-48 avec courroie
-STEPPER_MIN_STEPS_PER_SECOND = 80.0
-STEPPER_MAX_STEPS_PER_SECOND = 220.0
-STEPPER_ACCELERATION_STEPS_PER_SECOND2 = 400.0
+# Vitesse rapide pour 28BYJ-48 avec courroie (réglages pour plus de puissance)
+STEPPER_MIN_STEPS_PER_SECOND = 100.0
+STEPPER_MAX_STEPS_PER_SECOND = 300.0
+STEPPER_ACCELERATION_STEPS_PER_SECOND2 = 550.0
 STEPPER_NEAR_TARGET_STEPS = 100
 STEPPER_STOP_DEADBAND_STEPS = 2
 # Pas par update : pas trop d’un coup pour ne pas décrocher
-MAX_STEPS_PER_UPDATE = 80
+MAX_STEPS_PER_UPDATE = 100
 # Vitesse affichée (tour/min) quand le moteur tourne
 MOTOR_DISPLAY_RPM = 20
 
@@ -52,7 +52,7 @@ class MotorSimulator:
     def __init__(
         self,
         initial_opening_percent: float = 0.0,
-        movement_speed_percent_per_sec: float = 12.0,
+        movement_speed_percent_per_sec: float = 18.0,
         max_distance_cm: float = 60.0,
     ) -> None:
         self._current_opening = clamp(initial_opening_percent, 0.0, 100.0)
@@ -146,9 +146,9 @@ class _InlineStepper:
         ]
         self._step_number = 0
         self._number_of_steps = number_of_steps
-        rpm = 120.0
-        self._step_delay = 60.0 / (self._number_of_steps * rpm) if rpm > 0 else 0.008
-        self._min_step_delay_s = 0.0012
+        rpm = 150.0
+        self._step_delay = 60.0 / (self._number_of_steps * rpm) if rpm > 0 else 0.006
+        self._min_step_delay_s = 0.0009
 
     def set_speed_rpm(self, rpm: float) -> None:
         if rpm <= 0:
