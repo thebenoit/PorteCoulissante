@@ -31,6 +31,8 @@ class GreenhouseApp(tk.Tk):
         self.title("Contrôle d'une porte d'aération d'une serre")
         self.minsize(560, 320)
 
+        self._logger = logging.getLogger(__name__)
+
         self._sensor_manager = SensorManager()
         self._motor = create_motor(initial_opening_percent=0.0)
         self._controller = GreenhouseController(sensor_manager=self._sensor_manager, motor=self._motor)
@@ -254,27 +256,37 @@ class GreenhouseApp(tk.Tk):
         self._dir_right_label.configure(font=bold if not is_left else normal)
 
     def _on_auto_clicked(self) -> None:
+        self._logger.info("Bouton cliqué: passage en mode automatique.")
         self._mode_var.set("auto")
         self._controller.set_mode("auto")
         self._apply_mode_to_ui()
 
     def _on_manual_clicked(self) -> None:
+        self._logger.info("Bouton cliqué: passage en mode manuel.")
         self._mode_var.set("manual")
         self._controller.set_mode("manual")
         self._apply_mode_to_ui()
 
     def _on_apply_manual_opening_clicked(self) -> None:
+        self._logger.info(
+            "Bouton cliqué: appliquer ouverture manuelle demandée (champ texte='%s').",
+            self._manual_percent_var.get(),
+        )
         value = self._parse_manual_opening_percent_or_none()
         if value is None:
+            self._logger.warning("Ouverture manuelle invalide ou vide — aucune action lancée.")
             self.bell()
             return
+        self._logger.info("Action: consigne ouverture manuelle fixée à %.1f%%.", value)
         self._controller.set_manual_target_opening_percent(value)
 
     def _on_open_clicked(self) -> None:
+        self._logger.info("Bouton cliqué: ouvrir complètement la porte (cible 100%%).")
         self._controller.set_target_fully_open()
         self._manual_percent_var.set("100")
 
     def _on_close_clicked(self) -> None:
+        self._logger.info("Bouton cliqué: fermer complètement la porte (cible 0%%).")
         self._controller.set_target_fully_closed()
         self._manual_percent_var.set("0")
 
@@ -294,7 +306,9 @@ class GreenhouseApp(tk.Tk):
         self._last_tick = now
 
         # On cadence sur ~1s, mais en gardant une UI fluide.
-        snapshot = self._controller.step_once(dt_seconds=clamp(dt, 0.2, 1.2))
+        clamped_dt = clamp(dt, 0.2, 1.2)
+        self._logger.debug("Tick UI: dt=%.3f s (clampé à %.3f s) — mise à jour du contrôleur.", dt, clamped_dt)
+        snapshot = self._controller.step_once(dt_seconds=clamped_dt)
         self._refresh_ui(snapshot)
 
         self.after(1000, self._tick)

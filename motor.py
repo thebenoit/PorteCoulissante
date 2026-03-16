@@ -78,6 +78,12 @@ class MotorSimulator:
                 direction_label=self._last_motor_status.direction_label,
                 speed_rpm=0,
             )
+            logger.info(
+                "MotorSimulator à l'arrêt — ouverture actuelle=%.1f%% (cible=%.1f%%), dernière direction=%s",
+                self._current_opening,
+                self._target_opening,
+                self._last_motor_status.direction_label,
+            )
             return
 
         step = self._speed_percent_per_sec * dt
@@ -87,6 +93,13 @@ class MotorSimulator:
         direction = "Droite" if move > 0 else "Gauche"
         speed_rpm = 20  # valeur fixe de démo, comme l'exemple du sujet
         self._last_motor_status = MotorStatus(is_running=True, direction_label=direction, speed_rpm=speed_rpm)
+        logger.info(
+            "MotorSimulator en mouvement — direction=%s, ouverture actuelle=%.1f%%, cible=%.1f%%, delta=%.2f%%",
+            direction,
+            self._current_opening,
+            self._target_opening,
+            delta,
+        )
 
     def get_motor_status(self) -> MotorStatus:
         return self._last_motor_status
@@ -214,6 +227,13 @@ class StepperMotorDriver:
                 direction_label=self._last_motor_status.direction_label,
                 speed_rpm=0,
             )
+            logger.info(
+                "StepperMotorDriver à l'arrêt — pas actuels=%d (ouverture=%.1f%%, cible=%.1f%%), dernière direction=%s",
+                self._current_steps,
+                self._current_opening,
+                self._target_opening,
+                self._last_motor_status.direction_label,
+            )
             return
 
         steps_to_do = clamp(
@@ -231,6 +251,14 @@ class StepperMotorDriver:
             is_running=True,
             direction_label=direction_label,
             speed_rpm=MOTOR_DISPLAY_RPM,
+        )
+        logger.info(
+            "StepperMotorDriver en mouvement — direction=%s, pas effectués=%d, pas actuels=%d, ouverture=%.1f%%, cible=%.1f%%",
+            direction_label,
+            steps_to_do,
+            self._current_steps,
+            self._current_opening,
+            self._target_opening,
         )
 
     def get_motor_status(self) -> MotorStatus:
