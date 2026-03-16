@@ -21,6 +21,8 @@ from controller import GreenhouseController, SystemSnapshot
 from motor import MotorSimulator, create_motor
 from sensors import SensorManager
 
+UI_TICK_INTERVAL_MS = 200
+
 
 class GreenhouseApp(tk.Tk):
     """Interface Tkinter (UI) : affiche l'état et relaie les actions utilisateur vers le contrôleur."""
@@ -53,7 +55,7 @@ class GreenhouseApp(tk.Tk):
         self._apply_mode_to_ui()
 
         self._last_tick = time.monotonic()
-        self.after(200, self._tick)  # premier affichage rapide
+        self.after(UI_TICK_INTERVAL_MS, self._tick)
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
@@ -305,13 +307,13 @@ class GreenhouseApp(tk.Tk):
         dt = now - self._last_tick
         self._last_tick = now
 
-        # On cadence sur ~1s, mais en gardant une UI fluide.
-        clamped_dt = clamp(dt, 0.2, 1.2)
+        # Boucle de contrôle plus fréquente pour une meilleure réactivité capteurs/moteur.
+        clamped_dt = clamp(dt, 0.05, 0.4)
         self._logger.debug("Tick UI: dt=%.3f s (clampé à %.3f s) — mise à jour du contrôleur.", dt, clamped_dt)
         snapshot = self._controller.step_once(dt_seconds=clamped_dt)
         self._refresh_ui(snapshot)
 
-        self.after(1000, self._tick)
+        self.after(UI_TICK_INTERVAL_MS, self._tick)
 
     def _refresh_ui(self, snapshot: SystemSnapshot) -> None:
         t = snapshot.readings.temperature_c

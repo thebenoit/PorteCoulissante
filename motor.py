@@ -22,8 +22,12 @@ DEFAULT_STEPPER_PINS: Tuple[int, ...] = (18, 23, 21, 25)
 
 # Pas total pour un cycle 0 % → 100 % (course de la porte)
 STEPS_FULL_TRAVEL = 2048
-# Pas max exécutés par appel update() pour ne pas bloquer l'UI
-MAX_STEPS_PER_UPDATE = 512
+# Cadence de contrôle moteur (pas/s) pour un mouvement progressif et réactif
+STEPPER_TARGET_STEPS_PER_SECOND = 120.0
+# Limite de sécurité par update pour éviter un appel trop long
+MAX_STEPS_PER_UPDATE = 32
+# Nombre de pas minimum pour commencer à bouger (évite micro-oscillations)
+MIN_STEP_BUDGET_PER_UPDATE = 1
 # Vitesse affichée (tour/min) quand le moteur tourne
 MOTOR_DISPLAY_RPM = 20
 
@@ -192,10 +196,12 @@ class StepperMotorDriver:
         self._stepper: Optional[_InlineStepper] = None
         # Position en pas (0 = 0 %, STEPS_FULL_TRAVEL = 100 %)
         self._current_steps = int((self._current_opening / 100.0) * STEPS_FULL_TRAVEL)
+        self._target_steps_per_second = STEPPER_TARGET_STEPS_PER_SECOND
 
         devices = _create_stepper_output_devices(pins)
         if devices is not None:
             self._stepper = _InlineStepper(devices)
+            self._stepper.set_speed_rpm(self._compute_stepper_rpm())
             logger.info(
                 "StepperMotorDriver initialisé — broches %s, pas total %s",
                 pins,
@@ -214,44 +220,83 @@ class StepperMotorDriver:
         return self._target_opening
 
     def update(self, dt_seconds: float) -> None:
-        dt = max(0.0, float(dt_seconds))
-        if dt <= 1e-9 or self._stepper is None:
+        if not self._is_update_allowed(dt_seconds):
             return
 
-        target_steps = int((self._target_opening / 100.0) * STEPS_FULL_TRAVEL)
+        target_steps = self._convert_opening_percent_to_steps(self._target_opening)
         delta_steps = target_steps - self._current_steps
-        if abs(delta_steps) == 0:
-            self._current_opening = self._target_opening
-            self._last_motor_status = MotorStatus(
-                is_running=False,
-                direction_label=self._last_motor_status.direction_label,
-                speed_rpm=0,
-            )
-            logger.info(
-                "StepperMotorDriver à l'arrêt — pas actuels=%d (ouverture=%.1f%%, cible=%.1f%%), dernière direction=%s",
-                self._current_steps,
-                self._current_opening,
-                self._target_opening,
-                self._last_motor_status.direction_label,
-            )
+        if self._is_target_reached(delta_steps):
+            self._sync_at_target_position(target_steps)
             return
 
-        steps_to_do = clamp(
-            delta_steps,
-            -MAX_STEPS_PER_UPDATE,
-            MAX_STEPS_PER_UPDATE,
-        )
+        steps_budget = self._compute_step_budget(dt_seconds)
+        steps_to_do = self._compute_steps_to_execute(delta_steps, steps_budget)
+        if steps_to_do == 0:
+            self._mark_motor_running_without_step(delta_steps)
+            return
+
         self._stepper.step(steps_to_do)
+        self._apply_executed_steps(steps_to_do)
+        self._update_running_motor_status(steps_to_do)
+        self._log_movement(steps_to_do)
+
+    def _is_update_allowed(self, dt_seconds: float) -> bool:
+        dt = max(0.0, float(dt_seconds))
+        return dt > 1e-9 and self._stepper is not None
+
+    def _convert_opening_percent_to_steps(self, opening_percent: float) -> int:
+        return int((opening_percent / 100.0) * STEPS_FULL_TRAVEL)
+
+    def _is_target_reached(self, delta_steps: int) -> bool:
+        return abs(delta_steps) == 0
+
+    def _sync_at_target_position(self, target_steps: int) -> None:
+        self._current_steps = int(clamp(target_steps, 0, STEPS_FULL_TRAVEL))
+        self._current_opening = (self._current_steps / STEPS_FULL_TRAVEL) * 100.0
+        self._last_motor_status = MotorStatus(
+            is_running=False,
+            direction_label=self._last_motor_status.direction_label,
+            speed_rpm=0,
+        )
+        logger.info(
+            "StepperMotorDriver à l'arrêt — pas actuels=%d (ouverture=%.1f%%, cible=%.1f%%), dernière direction=%s",
+            self._current_steps,
+            self._current_opening,
+            self._target_opening,
+            self._last_motor_status.direction_label,
+        )
+
+    def _compute_step_budget(self, dt_seconds: float) -> int:
+        unclamped_budget = int(self._target_steps_per_second * max(0.0, dt_seconds))
+        bounded_budget = int(clamp(unclamped_budget, MIN_STEP_BUDGET_PER_UPDATE, MAX_STEPS_PER_UPDATE))
+        return bounded_budget
+
+    def _compute_steps_to_execute(self, delta_steps: int, step_budget: int) -> int:
+        return int(clamp(delta_steps, -step_budget, step_budget))
+
+    def _mark_motor_running_without_step(self, delta_steps: int) -> None:
+        direction_label = "Droite" if delta_steps > 0 else "Gauche"
+        self._last_motor_status = MotorStatus(
+            is_running=True,
+            direction_label=direction_label,
+            speed_rpm=MOTOR_DISPLAY_RPM,
+        )
+
+    def _apply_executed_steps(self, steps_to_do: int) -> None:
         self._current_steps += steps_to_do
-        self._current_steps = clamp(self._current_steps, 0, STEPS_FULL_TRAVEL)
+        self._current_steps = int(clamp(self._current_steps, 0, STEPS_FULL_TRAVEL))
         self._current_opening = (self._current_steps / STEPS_FULL_TRAVEL) * 100.0
 
+    def _update_running_motor_status(self, steps_to_do: int) -> None:
         direction_label = "Droite" if steps_to_do > 0 else "Gauche"
         self._last_motor_status = MotorStatus(
             is_running=True,
             direction_label=direction_label,
             speed_rpm=MOTOR_DISPLAY_RPM,
         )
+
+    def _log_movement(self, steps_to_do: int) -> None:
+        direction_label = self._last_motor_status.direction_label
         logger.info(
             "StepperMotorDriver en mouvement — direction=%s, pas effectués=%d, pas actuels=%d, ouverture=%.1f%%, cible=%.1f%%",
             direction_label,
@@ -260,6 +305,9 @@ class StepperMotorDriver:
             self._current_opening,
             self._target_opening,
         )
+
+    def _compute_stepper_rpm(self) -> float:
+        return (self._target_steps_per_second * 60.0) / 32.0
 
     def get_motor_status(self) -> MotorStatus:
         return self._last_motor_status
