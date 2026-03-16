@@ -108,12 +108,12 @@ class GreenhouseController:
             else self._motor.get_distance_cm()
         )
         door_position_normalized = compute_door_position_from_distance(distance_cm)
-        # Ouverture actuelle : toujours dérivée de la distance (3 cm = 0 %, 9 cm = 100 %)
-        current_opening_percent = (
-            compute_opening_percent_from_distance(distance_cm)
-            if real_distance_cm is not None
-            else self._motor.get_current_opening_percent()
-        )
+        # Ouverture affichée = UNIQUEMENT depuis le capteur (3 cm → 0 %, 9 cm → 100 %).
+        # Si pas de capteur, repli sur la position moteur.
+        if real_distance_cm is not None:
+            current_opening_percent = compute_opening_percent_from_distance(real_distance_cm)
+        else:
+            current_opening_percent = self._motor.get_current_opening_percent()
         warnings = tuple(self._sensor_manager.get_warnings())
 
         snapshot = SystemSnapshot(

@@ -19,7 +19,7 @@ from typing import Optional
 from algorithm import clamp
 from controller import GreenhouseController, SystemSnapshot
 from motor import MotorSimulator, create_motor
-from sensors import SensorManager
+from sensors import SensorManager, compute_opening_percent_from_distance
 
 UI_TICK_INTERVAL_MS = 120
 
@@ -330,9 +330,16 @@ class GreenhouseApp(tk.Tk):
 
         distance_text = "-- cm" if any("Détecteur de distance" in w for w in snapshot.warnings) else f"{snapshot.distance_cm:.0f} cm"
         self._distance_var.set(distance_text)
-        self._opening_var.set(f"{snapshot.current_opening_percent:.0f} %")
+        # Ouverture = toujours dérivée de la distance (3 cm → 0 %, 9 cm → 100 %) quand le capteur est là
+        has_distance_sensor = not any("Détecteur de distance" in w for w in snapshot.warnings)
+        opening_to_show = (
+            compute_opening_percent_from_distance(snapshot.distance_cm)
+            if has_distance_sensor
+            else snapshot.current_opening_percent
+        )
+        self._opening_var.set(f"{opening_to_show:.0f} %")
 
-        self._draw_opening_bar(snapshot.current_opening_percent)
+        self._draw_opening_bar(opening_to_show)
         self._update_mode_highlight(self._mode_var.get() == "manual")
 
         if snapshot.warnings:

@@ -22,14 +22,14 @@ DEFAULT_STEPPER_PINS: Tuple[int, ...] = (18, 23, 21, 25)
 
 # Pas total pour un cycle 0 % → 100 % (course de la porte)
 STEPS_FULL_TRAVEL = 2048
-# Vitesse intermédiaire pour 28BYJ-48 avec courroie : assez lent pour l'élan, pas trop pour avancer
-STEPPER_MIN_STEPS_PER_SECOND = 45.0
-STEPPER_MAX_STEPS_PER_SECOND = 120.0
-STEPPER_ACCELERATION_STEPS_PER_SECOND2 = 150.0
+# Plus lent = plus de couple (évite les blocages). 28BYJ-48 avec courroie/carton.
+STEPPER_MIN_STEPS_PER_SECOND = 28.0
+STEPPER_MAX_STEPS_PER_SECOND = 65.0
+STEPPER_ACCELERATION_STEPS_PER_SECOND2 = 80.0
 STEPPER_NEAR_TARGET_STEPS = 100
 STEPPER_STOP_DEADBAND_STEPS = 2
-# Lots de pas par update : assez pour donner de l'élan
-MAX_STEPS_PER_UPDATE = 40
+# Pas par update : pas trop d’un coup pour ne pas décrocher
+MAX_STEPS_PER_UPDATE = 28
 # Vitesse affichée (tour/min) quand le moteur tourne
 MOTOR_DISPLAY_RPM = 20
 
@@ -146,14 +146,17 @@ class _InlineStepper:
         ]
         self._step_number = 0
         self._number_of_steps = number_of_steps
-        # Vitesse initiale modérée pour 28BYJ-48 avec courroie
-        rpm = 60.0
-        self._step_delay = 60.0 / (self._number_of_steps * rpm) if rpm > 0 else 0.02
+        # Vitesse initiale lente pour plus de couple (évite blocages)
+        rpm = 35.0
+        self._step_delay = 60.0 / (self._number_of_steps * rpm) if rpm > 0 else 0.03
+        # Délai minimum par pas (ms) pour laisser le temps au moteur de bouger
+        self._min_step_delay_s = 0.003
 
     def set_speed_rpm(self, rpm: float) -> None:
         if rpm <= 0:
             return
-        self._step_delay = 60.0 / (self._number_of_steps * rpm)
+        delay = 60.0 / (self._number_of_steps * rpm)
+        self._step_delay = max(delay, self._min_step_delay_s)
 
     def step(self, steps_to_move: int) -> None:
         """Exécute steps_to_move pas (négatif = sens inverse)."""
@@ -172,7 +175,8 @@ class _InlineStepper:
                 self._pins[i].on()
             else:
                 self._pins[i].off()
-        time.sleep(self._step_delay)
+        # Toujours au moins _min_step_delay_s pour garder du couple
+        time.sleep(max(self._step_delay, self._min_step_delay_s))
 
     def close(self) -> None:
         for p in self._pins:
