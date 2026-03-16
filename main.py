@@ -330,7 +330,7 @@ class GreenhouseApp(tk.Tk):
 
         distance_text = "-- cm" if any("Détecteur de distance" in w for w in snapshot.warnings) else f"{snapshot.distance_cm:.0f} cm"
         self._distance_var.set(distance_text)
-        # Ouverture = toujours dérivée de la distance (3 cm → 0 %, 9 cm → 100 %) quand le capteur est là
+        # Ouverture = toujours dérivée de la distance (4 cm → 0 %, 9 cm → 100 %) quand le capteur est là
         has_distance_sensor = not any("Détecteur de distance" in w for w in snapshot.warnings)
         opening_to_show = (
             compute_opening_percent_from_distance(snapshot.distance_cm)

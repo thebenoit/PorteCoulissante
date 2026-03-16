@@ -64,7 +64,7 @@ class GreenhouseController:
     ) -> float:
         """
         En mode manuel, pour « Ouvrir » (100 %) ou « Fermer » (0 %), utilise le capteur
-        de distance pour arrêter le moteur : fermé à 3 cm, ouvert à 9 cm.
+        de distance pour arrêter le moteur : fermé à 4 cm, ouvert à 9 cm.
         """
         if self._manual_target_opening <= 0.0:
             if real_distance_cm <= CLOSED_DISTANCE_CM:
@@ -115,7 +115,7 @@ class GreenhouseController:
             else self._motor.get_distance_cm()
         )
         door_position_normalized = compute_door_position_from_distance(distance_cm)
-        # Ouverture affichée = UNIQUEMENT depuis le capteur (3 cm → 0 %, 9 cm → 100 %).
+        # Ouverture affichée = UNIQUEMENT depuis le capteur (4 cm → 0 %, 9 cm → 100 %).
         # Si pas de capteur, repli sur la position moteur.
         if real_distance_cm is not None:
             current_opening_percent = compute_opening_percent_from_distance(real_distance_cm)
