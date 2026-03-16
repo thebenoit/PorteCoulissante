@@ -336,8 +336,10 @@ class GreenhouseApp(tk.Tk):
         l = snapshot.readings.luminosity_percent
         o_auto = self._resolve_automatic_opening_to_display(snapshot)
 
-        self._temperature_var.set(f"{t:.1f} °C")
-        self._luminosity_var.set(f"{l:.0f} (0-100)")
+        temp_label = f"{t:.1f} °C" if snapshot.readings.temperature_sensor_detected else f"{t:.1f} °C (non détecté)"
+        lum_label = f"{l:.0f} (0-100)" if snapshot.readings.luminosity_sensor_detected else f"{l:.0f} (0-100) (non détecté)"
+        self._temperature_var.set(temp_label)
+        self._luminosity_var.set(lum_label)
         self._automatic_opening_var.set(self._format_automatic_opening_display(o_auto))
 
         motor = snapshot.motor_status

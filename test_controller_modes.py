@@ -23,6 +23,12 @@ class FakeSensorManager:
     def get_warnings(self) -> list[str]:
         return []
 
+    def is_temperature_from_fallback(self) -> bool:
+        return False
+
+    def is_luminosity_from_fallback(self) -> bool:
+        return False
+
 
 def test_manual_target_moves_motor_toward_requested_percentage() -> None:
     sensors = FakeSensorManager(temperature_c=30.0, luminosity_percent=80.0)

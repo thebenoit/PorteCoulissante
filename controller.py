@@ -124,7 +124,12 @@ class GreenhouseController:
         warnings = tuple(self._sensor_manager.get_warnings())
 
         snapshot = SystemSnapshot(
-            readings=SensorReadings(temperature_c=temp_c, luminosity_percent=lum),
+            readings=SensorReadings(
+                temperature_c=temp_c,
+                luminosity_percent=lum,
+                temperature_sensor_detected=not self._sensor_manager.is_temperature_from_fallback(),
+                luminosity_sensor_detected=not self._sensor_manager.is_luminosity_from_fallback(),
+            ),
             automatic_opening_percent=automatic_opening,
             target_opening_percent=target_opening,
             current_opening_percent=current_opening_percent,

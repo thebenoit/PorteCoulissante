@@ -24,7 +24,7 @@ _PCF8591_CHANNEL_SETTLING_S = 0.005
 logger = logging.getLogger(__name__)
 
 # Valeurs de repli quand un capteur n'est pas détecté ou invalide
-FALLBACK_TEMPERATURE_C = 25.0
+FALLBACK_TEMPERATURE_C = 24.0
 FALLBACK_LUMINOSITY_PERCENT = 50.0
 
 # Canaux ADC (Thermometer = canal 0, Nightlamp-style luminosité = canal 1)
@@ -258,6 +258,14 @@ class SensorManager:
             self._temperature_fallback_used = True
             return FALLBACK_TEMPERATURE_C
 
+    def is_temperature_from_fallback(self) -> bool:
+        """True si la dernière lecture de température utilisait la valeur de repli (capteur non détecté ou invalide)."""
+        return self._temperature_fallback_used
+
+    def is_luminosity_from_fallback(self) -> bool:
+        """True si la dernière lecture de luminosité utilisait la valeur de repli (capteur non détecté ou invalide)."""
+        return self._luminosity_fallback_used
+
     def _read_luminosity_adc_fresh(self) -> int:
         """
         Lit le canal ADC luminosité en s'assurant d'avoir une conversion à jour.
@@ -346,5 +354,8 @@ class SensorManager:
 
 @dataclass(frozen=True)
 class SensorReadings:
+    """Valeurs lues des capteurs + indicateurs si le capteur est détecté (sinon valeur de repli)."""
     temperature_c: float
     luminosity_percent: float
+    temperature_sensor_detected: bool = True
+    luminosity_sensor_detected: bool = True
