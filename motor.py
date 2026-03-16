@@ -18,7 +18,7 @@ from algorithm import clamp
 logger = logging.getLogger(__name__)
 
 # Broches moteur pas-à-pas (éviter 23, 24 réservées à l'ultrason)
-DEFAULT_STEPPER_PINS: Tuple[int, ...] = (5, 6, 13, 19)
+DEFAULT_STEPPER_PINS: Tuple[int, ...] = (18, 23, 21, 25)
 
 # Pas total pour un cycle 0 % → 100 % (course de la porte)
 STEPS_FULL_TRAVEL = 2048
