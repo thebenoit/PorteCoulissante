@@ -31,6 +31,7 @@ class DatabaseAgent:
         self._user = os.getenv("DB_USER", "user")
         self._password = os.getenv("DB_PASSWORD", "pass")
         self._database = os.getenv("DB_NAME", "db_objet")
+        self._logged_connection_ok = False
 
         if mysql is None:
             logger.warning("mysql-connector-python non disponible: persistance DB désactivée.")
@@ -55,16 +56,30 @@ class DatabaseAgent:
                 database=self._database,
                 autocommit=False,
             )
+        except Exception as exc:
+            logger.warning("Erreur DB (connexion): %s", exc)
+            yield None
+            return
+        try:
+            if not self._logged_connection_ok:
+                logger.info(
+                    "MySQL: connexion OK — %s:%s / %s (user=%s)",
+                    self._host,
+                    self._port,
+                    self._database,
+                    self._user,
+                )
+                self._logged_connection_ok = True
             yield conn
             conn.commit()
         except Exception as exc:
-            if conn is not None:
+            try:
                 conn.rollback()
+            except Exception:
+                pass
             logger.warning("Erreur DB: %s", exc)
-            yield None
         finally:
-            if conn is not None:
-                conn.close()
+            conn.close()
 
     def insert_action(self, commande: str, valeur: Optional[float]) -> None:
         with self._connection() as conn:
