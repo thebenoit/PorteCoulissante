@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+from decimal import Decimal
 from typing import Any, Optional
 
 from agents.database_agent import DatabaseAgent
@@ -75,9 +76,18 @@ class TelemetryAgent:
     def _flush_pending_messages(self) -> None:
         pending = self._database_agent.fetch_pending_messages(limit=20)
         for row in pending:
-            iot_payload = dict(row)
-            id_date = iot_payload.get("id_date")
-            if hasattr(id_date, "isoformat"):
-                iot_payload["id_date"] = id_date.isoformat()
+            iot_payload = self._to_json_serializable_payload(dict(row))
             self._try_send_and_mark(iot_payload)
+
+    def _to_json_serializable_payload(self, payload: dict[str, object]) -> dict[str, object]:
+        serializable: dict[str, object] = {}
+        for key, value in payload.items():
+            if isinstance(value, Decimal):
+                serializable[key] = float(value)
+                continue
+            if hasattr(value, "isoformat"):
+                serializable[key] = value.isoformat()
+                continue
+            serializable[key] = value
+        return serializable
 
