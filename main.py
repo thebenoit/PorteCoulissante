@@ -10,6 +10,11 @@ Objectifs :
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
+# .env prime sur des exports shell erronés (ex. DB_PORT=6000).
+load_dotenv(override=True)
+
 import logging
 import time
 import tkinter as tk

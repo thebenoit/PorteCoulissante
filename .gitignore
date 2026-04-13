@@ -3,6 +3,9 @@
 
 documents/
 
+# Secrets / config locale (copier .env.example vers .env)
+.env
+
 # Données MySQL Docker (volume local)
 mydb/
 
