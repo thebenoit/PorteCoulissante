@@ -72,3 +72,4 @@ def test_opening_clamped_between_0_and_100() -> None:
     o_high = DoorOpeningAlgorithm.calculate_automatic_opening_percent(50.0, 0.0)
     assert math.isclose(o_low, 0.0, abs_tol=1e-9)
     assert math.isclose(o_high, 100.0, abs_tol=1e-9)
+

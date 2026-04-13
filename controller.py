@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Union
 
+from agents.database_agent import DatabaseAgent
 from algorithm import DoorOpeningAlgorithm, clamp
 from motor import MotorSimulator, MotorStatus, StepperMotorDriver
 from sensors import (
@@ -36,16 +37,28 @@ class SystemSnapshot:
 class GreenhouseController:
     """Orchestration : capteurs -> calcul -> consigne moteur, sans dépendance à l'UI."""
 
-    def __init__(self, sensor_manager: SensorManager, motor: MotorType) -> None:
+    def __init__(
+        self,
+        sensor_manager: SensorManager,
+        motor: MotorType,
+        database_agent: Optional[DatabaseAgent] = None,
+    ) -> None:
         self._sensor_manager = sensor_manager
         self._motor = motor
+        self._database_agent = database_agent
         self._mode = "auto"  # "auto" | "manual"
         self._manual_target_opening = 0.0
 
         self._last_snapshot: Optional[SystemSnapshot] = None
+        self._last_motor_status: Optional[MotorStatus] = None
 
     def set_mode(self, mode: str) -> None:
         self._mode = "manual" if mode == "manual" else "auto"
+        if self._database_agent is not None:
+            self._database_agent.insert_action(
+                commande="manuelle" if self._mode == "manual" else "automatique",
+                valeur=None,
+            )
 
     def get_mode(self) -> str:
         return self._mode
@@ -55,9 +68,13 @@ class GreenhouseController:
 
     def set_target_fully_open(self) -> None:
         self.set_manual_target_opening_percent(100.0)
+        if self._database_agent is not None:
+            self._database_agent.insert_action(commande="ouvrir", valeur=100.0)
 
     def set_target_fully_closed(self) -> None:
         self.set_manual_target_opening_percent(0.0)
+        if self._database_agent is not None:
+            self._database_agent.insert_action(commande="fermer", valeur=0.0)
 
     def _effective_manual_target_with_distance(
         self, real_distance_cm: float, current_opening_percent: float
@@ -122,6 +139,7 @@ class GreenhouseController:
         else:
             current_opening_percent = self._motor.get_current_opening_percent()
         warnings = tuple(self._sensor_manager.get_warnings())
+        self._record_event_if_needed(distance_cm=distance_cm, warnings=warnings)
 
         snapshot = SystemSnapshot(
             readings=SensorReadings(
@@ -140,6 +158,22 @@ class GreenhouseController:
         )
         self._last_snapshot = snapshot
         return snapshot
+
+    def _record_event_if_needed(self, distance_cm: float, warnings: tuple[str, ...]) -> None:
+        if self._database_agent is None:
+            return
+        motor_status = self._motor.get_motor_status()
+        if self._last_motor_status == motor_status:
+            return
+        self._last_motor_status = motor_status
+        self._database_agent.insert_event(
+            moteur="demarrer" if motor_status.is_running else "arreter",
+            direction=motor_status.direction_label.lower() if motor_status.direction_label else None,
+            vitesse=float(motor_status.speed_rpm),
+            distance=float(distance_cm),
+            erreur="oui" if warnings else "non",
+            avertissement=" | ".join(warnings) if warnings else None,
+        )
 
     def get_last_snapshot(self) -> Optional[SystemSnapshot]:
         return self._last_snapshot

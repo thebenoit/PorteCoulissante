@@ -63,3 +63,4 @@ def test_motor_running_speed_matches_configured_display_constant() -> None:
     status = motor.get_motor_status()
     assert status.is_running is True
     assert status.speed_rpm == MOTOR_DISPLAY_RPM
+

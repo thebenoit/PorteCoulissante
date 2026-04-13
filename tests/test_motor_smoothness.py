@@ -1,5 +1,6 @@
 from motor import (
     MAX_STEPS_PER_UPDATE,
+    STEPPER_ACCELERATION_STEPS_PER_SECOND2,
     STEPPER_MAX_STEPS_PER_SECOND,
     STEPPER_MIN_STEPS_PER_SECOND,
     STEPPER_NEAR_TARGET_STEPS,
@@ -55,8 +56,14 @@ def test_update_accelerates_and_executes_incremental_movement():
     driver.set_target_opening_percent(100.0)
     driver.update(0.1)
 
-    assert fake_stepper.steps_calls == [36]
-    assert driver._current_speed_steps_per_second == STEPPER_MAX_STEPS_PER_SECOND
+    expected_speed = min(
+        STEPPER_MAX_STEPS_PER_SECOND,
+        STEPPER_MIN_STEPS_PER_SECOND + (STEPPER_ACCELERATION_STEPS_PER_SECOND2 * 0.1),
+    )
+    expected_steps = int(expected_speed * 0.1)
+
+    assert fake_stepper.steps_calls == [expected_steps]
+    assert driver._current_speed_steps_per_second == expected_speed
     assert driver.get_current_opening_percent() > 0.0
 
 
@@ -77,3 +84,4 @@ def test_target_speed_is_reduced_near_goal():
     target_speed = driver._compute_target_speed_steps_per_second(near_target_delta)
 
     assert target_speed == STEPPER_MIN_STEPS_PER_SECOND
+

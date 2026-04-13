@@ -16,6 +16,8 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional
 
+from agents.database_agent import DatabaseAgent
+from agents.telemetry_agent import TelemetryAgent
 from algorithm import clamp
 from controller import GreenhouseController, SystemSnapshot
 from motor import MOTOR_DISPLAY_RPM, MotorSimulator, create_motor
@@ -35,9 +37,15 @@ class GreenhouseApp(tk.Tk):
 
         self._logger = logging.getLogger(__name__)
 
+        self._database_agent = DatabaseAgent()
+        self._telemetry_agent = TelemetryAgent(database_agent=self._database_agent)
         self._sensor_manager = SensorManager()
         self._motor = create_motor(initial_opening_percent=0.0)
-        self._controller = GreenhouseController(sensor_manager=self._sensor_manager, motor=self._motor)
+        self._controller = GreenhouseController(
+            sensor_manager=self._sensor_manager,
+            motor=self._motor,
+            database_agent=self._database_agent,
+        )
 
         self._mode_var = tk.StringVar(value="auto")
         self._manual_percent_var = tk.StringVar(value="56")  # valeur d'exemple du sujet
@@ -284,6 +292,8 @@ class GreenhouseApp(tk.Tk):
             return
         self._logger.info("Action: consigne ouverture manuelle fixée à %.1f%%.", value)
         self._controller.set_manual_target_opening_percent(value)
+        if self._database_agent.is_enabled:
+            self._database_agent.insert_action(commande="manuelle", valeur=value)
 
     def _sync_manual_target_from_entry(self) -> None:
         """
@@ -327,6 +337,7 @@ class GreenhouseApp(tk.Tk):
         clamped_dt = clamp(dt, 0.05, 0.4)
         self._logger.debug("Tick UI: dt=%.3f s (clampé à %.3f s) — mise à jour du contrôleur.", dt, clamped_dt)
         snapshot = self._controller.step_once(dt_seconds=clamped_dt)
+        self._telemetry_agent.maybe_send_telemetry(snapshot=snapshot, mode=self._controller.get_mode())
         self._refresh_ui(snapshot)
 
         self.after(UI_TICK_INTERVAL_MS, self._tick)

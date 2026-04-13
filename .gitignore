@@ -1,6 +1,8 @@
 # Fichiers système macOS
 .DS_Store
 
+documents/
+
 # Fichiers Python générés
 __pycache__/
 *.py[cod]
