@@ -3,6 +3,9 @@
 
 documents/
 
+# Données MySQL Docker (volume local)
+mydb/
+
 # Fichiers Python générés
 __pycache__/
 *.py[cod]

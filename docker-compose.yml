@@ -1,0 +1,56 @@
+# Stack MySQL + phpMyAdmin + Apache/PHP (Chapitre 6 — BD avec conteneur).
+# Projet final H26 : persistance locale pour l’objet connecté.
+#
+# Démarrage : docker compose up -d
+# Arrêt     : docker compose down
+#
+# Connexion depuis l’app Python sur la même machine :
+#   DB_HOST=127.0.0.1  DB_PORT=3306  DB_USER=user  DB_PASSWORD=pass  DB_NAME=db_objet
+#
+# phpMyAdmin : http://localhost:7777
+# Site PHP   : http://localhost:9999  (optionnel, exercice chapitre 6)
+
+services:
+  db:
+    image: mysql:latest
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: adadad
+      MYSQL_DATABASE: db_objet
+      MYSQL_USER: user
+      MYSQL_PASSWORD: pass
+    ports:
+      # Nécessaire pour que l’application Python sur l’hôte se connecte à MySQL
+      - "3306:3306"
+    volumes:
+      - ./mydb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-padadad"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    restart: unless-stopped
+    ports:
+      - "7777:80"
+    environment:
+      PMA_HOST: db
+      PMA_USER: user
+      PMA_PASSWORD: pass
+    depends_on:
+      db:
+        condition: service_healthy
+
+  webserver:
+    image: cybercertif/apache-php-mysql
+    restart: unless-stopped
+    ports:
+      - "9999:80"
+    volumes:
+      - ./myweb:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy

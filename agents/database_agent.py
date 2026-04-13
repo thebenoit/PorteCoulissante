@@ -27,7 +27,7 @@ class DatabaseAgent:
     def __init__(self) -> None:
         self._enabled = os.getenv("DB_ENABLED", "1") == "1"
         self._host = os.getenv("DB_HOST", "127.0.0.1")
-        self._port = int(os.getenv("DB_PORT", "6000"))
+        self._port = int(os.getenv("DB_PORT", "3306"))
         self._user = os.getenv("DB_USER", "user")
         self._password = os.getenv("DB_PASSWORD", "pass")
         self._database = os.getenv("DB_NAME", "db_objet")
