@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import math
 import random
+import threading
 import time
 from dataclasses import dataclass
 from typing import List, Optional, Any
@@ -42,6 +43,8 @@ LUMINOSITY_ADC_MAX = 255
 ULTRASONIC_TRIGGER_PIN = 20
 ULTRASONIC_ECHO_PIN = 24
 ULTRASONIC_MAX_DISTANCE_M = 3.0
+ULTRASONIC_READ_STALE_AFTER_S = 1.5
+ULTRASONIC_POLL_INTERVAL_S = 0.08
 
 # Calibration distance porte (capteur ultrason) :
 # - 4 cm = porte complètement fermée (0 % ouverture), arrêt du moteur.
@@ -156,6 +159,11 @@ class SensorManager:
         self._adc_available = False
         self._distance_sensor: Any = None
         self._distance_available = False
+        self._distance_poll_thread: Optional[threading.Thread] = None
+        self._distance_poll_stop = threading.Event()
+        self._distance_lock = threading.Lock()
+        self._last_distance_cm: Optional[float] = None
+        self._last_distance_at_monotonic: float = 0.0
         self._temperature_fallback_used = False
         self._luminosity_fallback_used = False
 
@@ -210,6 +218,7 @@ class SensorManager:
                 max_distance=ULTRASONIC_MAX_DISTANCE_M,
             )
             self._distance_available = True
+            self._start_distance_polling()
             logger.info(
                 "Capteur de distance (ultrason) détecté — broches trigger=%s, echo=%s.",
                 ULTRASONIC_TRIGGER_PIN,
@@ -222,6 +231,30 @@ class SensorManager:
                 "Capteur de distance (ultrason) non détecté: %s — distance simulée par le moteur.",
                 e,
             )
+
+    def _start_distance_polling(self) -> None:
+        if not self._distance_available or self._distance_sensor is None:
+            return
+        if self._distance_poll_thread is not None:
+            return
+        self._distance_poll_stop.clear()
+        self._distance_poll_thread = threading.Thread(
+            target=self._distance_poll_loop,
+            name="distance-sensor-poll",
+            daemon=True,
+        )
+        self._distance_poll_thread.start()
+
+    def _distance_poll_loop(self) -> None:
+        while not self._distance_poll_stop.is_set():
+            try:
+                distance_cm = float(self._distance_sensor.distance * 100.0)
+                with self._distance_lock:
+                    self._last_distance_cm = distance_cm
+                    self._last_distance_at_monotonic = time.monotonic()
+            except Exception:
+                pass
+            time.sleep(ULTRASONIC_POLL_INTERVAL_S)
 
     def _log_sensor_status(self) -> None:
         """Résumé du statut des capteurs dans les logs."""
@@ -312,15 +345,32 @@ class SensorManager:
             return FALLBACK_LUMINOSITY_PERCENT
 
     def read_distance_cm(self) -> Optional[float]:
-        """Retourne la distance en cm si le capteur ultrason est disponible, sinon None."""
+        """Retourne la dernière distance disponible en cm sans bloquer l'UI."""
         if not self.is_hardware_available:
             return None
         if not self._distance_available or self._distance_sensor is None:
             return None
-        try:
-            return float(self._distance_sensor.distance * 100.0)
-        except Exception:
-            return None
+        with self._distance_lock:
+            if self._last_distance_cm is None:
+                return None
+            age_s = time.monotonic() - self._last_distance_at_monotonic
+            if age_s > ULTRASONIC_READ_STALE_AFTER_S:
+                return None
+            return self._last_distance_cm
+
+    def close(self) -> None:
+        """Libère proprement les ressources capteurs."""
+        self._distance_poll_stop.set()
+        if self._distance_poll_thread is not None and self._distance_poll_thread.is_alive():
+            self._distance_poll_thread.join(timeout=0.2)
+        self._distance_poll_thread = None
+        if self._distance_sensor is not None:
+            try:
+                self._distance_sensor.close()
+            except Exception:
+                pass
+        self._distance_sensor = None
+        self._distance_available = False
 
     def get_warnings(self) -> List[str]:
         """Retourne la liste des avertissements (capteur non détecté ou valeur de repli utilisée)."""

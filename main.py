@@ -66,9 +66,16 @@ class GreenhouseApp(tk.Tk):
 
         self._build_ui()
         self._apply_mode_to_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_close_app)
 
         self._last_tick = time.monotonic()
         self.after(UI_TICK_INTERVAL_MS, self._tick)
+
+    def _on_close_app(self) -> None:
+        try:
+            self._sensor_manager.close()
+        finally:
+            self.destroy()
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
@@ -341,9 +348,12 @@ class GreenhouseApp(tk.Tk):
         # Boucle de contrôle plus fréquente pour une meilleure réactivité capteurs/moteur.
         clamped_dt = clamp(dt, 0.05, 0.4)
         self._logger.debug("Tick UI: dt=%.3f s (clampé à %.3f s) — mise à jour du contrôleur.", dt, clamped_dt)
-        snapshot = self._controller.step_once(dt_seconds=clamped_dt)
-        self._telemetry_agent.maybe_send_telemetry(snapshot=snapshot, mode=self._controller.get_mode())
-        self._refresh_ui(snapshot)
+        try:
+            snapshot = self._controller.step_once(dt_seconds=clamped_dt)
+            self._telemetry_agent.maybe_send_telemetry(snapshot=snapshot, mode=self._controller.get_mode())
+            self._refresh_ui(snapshot)
+        except Exception as exc:
+            self._logger.exception("Tick UI en échec: %s", exc)
 
         self.after(UI_TICK_INTERVAL_MS, self._tick)
 
