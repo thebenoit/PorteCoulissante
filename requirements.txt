@@ -1,3 +1,6 @@
 mysql-connector-python
 azure-iot-device
 python-dotenv>=1.0.0
+azure-cosmos
+fastapi
+uvicorn
