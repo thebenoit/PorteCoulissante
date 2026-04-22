@@ -1,0 +1,9 @@
+# Réduit le contexte de build (utile sur Raspberry Pi)
+.git
+mydb
+**/*.pdf
+Freenove_Ultimate_Starter_Kit_for_Raspberry_Pi
+__pycache__
+.venv
+venv
+*.pyc

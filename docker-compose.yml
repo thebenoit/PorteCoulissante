@@ -9,6 +9,7 @@
 #
 # phpMyAdmin : http://localhost:7777
 # Site PHP   : http://localhost:9999  (optionnel, exercice chapitre 6)
+# Le service webserver est construit depuis docker/web/Dockerfile (compatible Raspberry Pi arm64).
 
 services:
   db:
@@ -45,7 +46,9 @@ services:
         condition: service_healthy
 
   webserver:
-    image: cybercertif/apache-php-mysql
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
     restart: unless-stopped
     ports:
       - "9999:80"
