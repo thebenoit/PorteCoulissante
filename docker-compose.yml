@@ -52,6 +52,11 @@ services:
     restart: unless-stopped
     ports:
       - "9999:80"
+    environment:
+      MYSQL_HOST: db
+      MYSQL_USER: user
+      MYSQL_PASSWORD: pass
+      MYSQL_DATABASE: db_objet
     volumes:
       - ./myweb:/var/www/html
     depends_on:
