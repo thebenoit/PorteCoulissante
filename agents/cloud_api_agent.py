@@ -15,6 +15,8 @@ except Exception:
 def _utc_iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+QUERY_PARAM_DEVICE_ID = "@device_id"
+
 
 @dataclass(frozen=True)
 class CosmosConfig:
@@ -78,7 +80,7 @@ class CloudApiAgent:
             "WHERE IS_DEFINED(c.body.id_objet) AND c.body.id_objet = @device_id "
             "ORDER BY c._ts DESC"
         )
-        params = [{"name": "@device_id", "value": device_id}]
+        params = [{"name": QUERY_PARAM_DEVICE_ID, "value": device_id}]
         items = list(
             self._telemetry_container.query_items(
                 query=query,
@@ -101,7 +103,7 @@ class CloudApiAgent:
             "ORDER BY c._ts DESC"
         )
         params = [
-            {"name": "@device_id", "value": device_id},
+            {"name": QUERY_PARAM_DEVICE_ID, "value": device_id},
             {"name": "@limit", "value": safe_limit},
         ]
         return [
@@ -137,4 +139,65 @@ class CloudApiAgent:
                 # Le conteneur commands peut ne pas encore exister; on retourne quand meme
                 # la commande pour permettre un premier test de l'API.
                 pass
+        return command
+
+    def get_pending_commands(self, device_id: str, limit: int = 20) -> list[dict[str, Any]]:
+        if self._command_container is None:
+            return []
+        safe_limit = max(1, min(int(limit), 100))
+        query = (
+            "SELECT TOP @limit c.id, c.id_objet, c.type, c.id_date, c.status, c.commande, c.valeur, c.action "
+            "FROM c "
+            "WHERE c.type = 'command' AND c.id_objet = @device_id AND c.status = 'en_attente' "
+            "ORDER BY c.id_date ASC"
+        )
+        params = [
+            {"name": QUERY_PARAM_DEVICE_ID, "value": device_id},
+            {"name": "@limit", "value": safe_limit},
+        ]
+        return [
+            dict(item)
+            for item in self._command_container.query_items(
+                query=query,
+                parameters=params,
+                enable_cross_partition_query=True,
+            )
+        ]
+
+    def ack_command(
+        self,
+        device_id: str,
+        command_id: str,
+        status: str,
+        message: str | None = None,
+        mode_applique: str | None = None,
+        valeur_appliquee: float | None = None,
+    ) -> dict[str, Any] | None:
+        if self._command_container is None:
+            return None
+        query = (
+            "SELECT TOP 1 c.id, c.id_objet, c.type, c.id_date, c.status, c.commande, c.valeur, c.action "
+            "FROM c "
+            "WHERE c.id = @command_id AND c.id_objet = @device_id"
+        )
+        params = [
+            {"name": "@command_id", "value": command_id},
+            {"name": QUERY_PARAM_DEVICE_ID, "value": device_id},
+        ]
+        items = list(
+            self._command_container.query_items(
+                query=query,
+                parameters=params,
+                enable_cross_partition_query=True,
+            )
+        )
+        if not items:
+            return None
+        command = dict(items[0])
+        command["status"] = status
+        command["id_date_traitement"] = _utc_iso_now()
+        command["message_traitement"] = message
+        command["mode_applique"] = mode_applique
+        command["valeur_appliquee"] = valeur_appliquee
+        self._command_container.upsert_item(command)
         return command

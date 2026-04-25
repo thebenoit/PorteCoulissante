@@ -34,6 +34,35 @@ class CommandResponse(BaseModel):
     command: dict[str, Any]
 
 
+class CommandPendingListResponse(BaseModel):
+    items: list[dict[str, Any]]
+
+
+class CommandAckRequest(BaseModel):
+    status: Literal["accomplit", "probleme"] = Field(
+        description="Etat final de la commande traitee par l'objet."
+    )
+    message: str | None = Field(
+        default=None,
+        description="Detail optionnel (erreur, confirmation, etc.).",
+    )
+    mode_applique: Literal["automatique", "manuelle"] | None = Field(
+        default=None,
+        description="Mode effectivement applique sur l'objet.",
+    )
+    valeur_appliquee: float | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Valeur d'ouverture effectivement appliquee (si pertinent).",
+    )
+
+
+class CommandAckResponse(BaseModel):
+    updated: bool
+    command: dict[str, Any] | None
+
+
 class DeviceTelemetryResponse(BaseModel):
     item: dict[str, Any] | None
 

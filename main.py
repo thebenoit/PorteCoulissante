@@ -22,6 +22,7 @@ from tkinter import ttk
 from typing import Optional
 
 from agents.database_agent import DatabaseAgent
+from agents.command_feedback_agent import CommandFeedbackAgent
 from agents.telemetry_agent import TelemetryAgent
 from algorithm import clamp
 from controller import GreenhouseController, SystemSnapshot
@@ -51,6 +52,7 @@ class GreenhouseApp(tk.Tk):
             motor=self._motor,
             database_agent=self._database_agent,
         )
+        self._command_feedback_agent = CommandFeedbackAgent(controller=self._controller)
 
         self._mode_var = tk.StringVar(value="auto")
         self._manual_percent_var = tk.StringVar(value="56")  # valeur d'exemple du sujet
@@ -350,6 +352,7 @@ class GreenhouseApp(tk.Tk):
         self._logger.debug("Tick UI: dt=%.3f s (clampé à %.3f s) — mise à jour du contrôleur.", dt, clamped_dt)
         try:
             snapshot = self._controller.step_once(dt_seconds=clamped_dt)
+        self._command_feedback_agent.maybe_process_pending_commands()
             self._telemetry_agent.maybe_send_telemetry(snapshot=snapshot, mode=self._controller.get_mode())
             self._refresh_ui(snapshot)
         except Exception as exc:
