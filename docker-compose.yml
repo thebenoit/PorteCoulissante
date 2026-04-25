@@ -57,6 +57,7 @@ services:
       MYSQL_USER: user
       MYSQL_PASSWORD: pass
       MYSQL_DATABASE: db_objet
+      CLOUD_API_BASE_URL: ${CLOUD_API_BASE_URL:-https://projet-final-c5e4b5h8a3b4cqbx.eastus-01.azurewebsites.net}
     volumes:
       - ./myweb:/var/www/html
     depends_on:

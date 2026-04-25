@@ -352,7 +352,7 @@ class GreenhouseApp(tk.Tk):
         self._logger.debug("Tick UI: dt=%.3f s (clampé à %.3f s) — mise à jour du contrôleur.", dt, clamped_dt)
         try:
             snapshot = self._controller.step_once(dt_seconds=clamped_dt)
-        self._command_feedback_agent.maybe_process_pending_commands()
+            self._command_feedback_agent.maybe_process_pending_commands()
             self._telemetry_agent.maybe_send_telemetry(snapshot=snapshot, mode=self._controller.get_mode())
             self._refresh_ui(snapshot)
         except Exception as exc:
