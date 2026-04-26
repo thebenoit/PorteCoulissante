@@ -30,6 +30,7 @@ from motor import MOTOR_DISPLAY_RPM, MotorSimulator, create_motor
 from sensors import SensorManager, compute_opening_percent_from_distance
 
 UI_TICK_INTERVAL_MS = 120
+WARNING_BLINK_INTERVAL_MS = 450
 
 
 class GreenhouseApp(tk.Tk):
@@ -71,6 +72,8 @@ class GreenhouseApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close_app)
 
         self._last_tick = time.monotonic()
+        self._last_warning_blink_toggle_ts = 0.0
+        self._warning_blink_is_on = False
         self.after(UI_TICK_INTERVAL_MS, self._tick)
 
     def _on_close_app(self) -> None:
@@ -391,10 +394,36 @@ class GreenhouseApp(tk.Tk):
 
         if snapshot.warnings:
             self._warnings_var.set("\n".join(snapshot.warnings))
+            self._apply_warning_blink_if_needed(snapshot=snapshot)
             self._warnings_frame.grid(row=5, column=0, columnspan=2, padx=0, pady=6, sticky="ew")
         else:
             self._warnings_var.set("")
+            self._reset_warning_blink_style()
             self._warnings_frame.grid_remove()
+
+    def _apply_warning_blink_if_needed(self, snapshot: SystemSnapshot) -> None:
+        if not self._has_opening_anomaly_warning(snapshot=snapshot):
+            self._reset_warning_blink_style()
+            return
+        if self._should_toggle_warning_blink():
+            self._warning_blink_is_on = not self._warning_blink_is_on
+            self._last_warning_blink_toggle_ts = time.monotonic()
+        self._warnings_label.configure(foreground="#b02a37" if self._warning_blink_is_on else "#111111")
+
+    def _has_opening_anomaly_warning(self, snapshot: SystemSnapshot) -> bool:
+        return any(
+            "ouverte plus que nécessaire" in warning or "ouverte moins que nécessaire" in warning
+            for warning in snapshot.warnings
+        )
+
+    def _should_toggle_warning_blink(self) -> bool:
+        elapsed_ms = (time.monotonic() - self._last_warning_blink_toggle_ts) * 1000.0
+        return elapsed_ms >= WARNING_BLINK_INTERVAL_MS
+
+    def _reset_warning_blink_style(self) -> None:
+        self._warning_blink_is_on = False
+        self._last_warning_blink_toggle_ts = 0.0
+        self._warnings_label.configure(foreground="#111111")
 
     def _resolve_automatic_opening_to_display(self, snapshot: SystemSnapshot) -> float:
         """

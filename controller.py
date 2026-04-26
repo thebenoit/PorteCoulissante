@@ -20,6 +20,7 @@ from sensors import (
 )
 
 MotorType = Union[MotorSimulator, StepperMotorDriver]
+OPENING_DEVIATION_WARNING_THRESHOLD_PERCENT = 8.0
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,47 @@ class GreenhouseController:
         if self._database_agent is not None:
             self._database_agent.insert_action(commande="fermer", valeur=0.0)
 
+    def _read_current_opening_percent(self, real_distance_cm: float | None) -> float:
+        if real_distance_cm is not None:
+            return compute_opening_percent_from_distance(real_distance_cm)
+        return self._motor.get_current_opening_percent()
+
+    def _resolve_target_opening_percent(
+        self, automatic_opening: float, real_distance_cm: float | None, current_opening_percent: float
+    ) -> float:
+        if self._mode == "auto":
+            return automatic_opening
+        if real_distance_cm is not None:
+            return self._effective_manual_target_with_distance(real_distance_cm, current_opening_percent)
+        return self._manual_target_opening
+
+    def _build_opening_deviation_warning(
+        self, automatic_opening_percent: float, current_opening_percent: float
+    ) -> str | None:
+        opening_gap = current_opening_percent - automatic_opening_percent
+        if abs(opening_gap) <= OPENING_DEVIATION_WARNING_THRESHOLD_PERCENT:
+            return None
+        if opening_gap > 0:
+            return (
+                "La porte est ouverte plus que nécessaire, "
+                f"elle doit être ouverte à : {automatic_opening_percent:.1f} %"
+            )
+        return (
+            "La porte est ouverte moins que nécessaire, "
+            f"elle doit être ouverte à : {automatic_opening_percent:.1f} %"
+        )
+
+    def _merge_system_warnings(
+        self, sensor_warnings: tuple[str, ...], automatic_opening_percent: float, current_opening_percent: float
+    ) -> tuple[str, ...]:
+        deviation_warning = self._build_opening_deviation_warning(
+            automatic_opening_percent=automatic_opening_percent,
+            current_opening_percent=current_opening_percent,
+        )
+        if deviation_warning is None:
+            return sensor_warnings
+        return sensor_warnings + (deviation_warning,)
+
     def _effective_manual_target_with_distance(
         self, real_distance_cm: float, current_opening_percent: float
     ) -> float:
@@ -108,20 +150,12 @@ class GreenhouseController:
         automatic_opening = DoorOpeningAlgorithm.calculate_automatic_opening_percent(
             temp_c, lum
         )
-        if self._mode == "auto":
-            target_opening = automatic_opening
-        else:
-            current_opening = (
-                compute_opening_percent_from_distance(real_distance_cm)
-                if real_distance_cm is not None
-                else self._motor.get_current_opening_percent()
-            )
-            if real_distance_cm is not None:
-                target_opening = self._effective_manual_target_with_distance(
-                    real_distance_cm, current_opening
-                )
-            else:
-                target_opening = self._manual_target_opening
+        current_opening = self._read_current_opening_percent(real_distance_cm=real_distance_cm)
+        target_opening = self._resolve_target_opening_percent(
+            automatic_opening=automatic_opening,
+            real_distance_cm=real_distance_cm,
+            current_opening_percent=current_opening,
+        )
 
         self._motor.set_target_opening_percent(target_opening)
         self._motor.update(dt_seconds)
@@ -138,7 +172,12 @@ class GreenhouseController:
             current_opening_percent = compute_opening_percent_from_distance(real_distance_cm)
         else:
             current_opening_percent = self._motor.get_current_opening_percent()
-        warnings = tuple(self._sensor_manager.get_warnings())
+        sensor_warnings = tuple(self._sensor_manager.get_warnings())
+        warnings = self._merge_system_warnings(
+            sensor_warnings=sensor_warnings,
+            automatic_opening_percent=automatic_opening,
+            current_opening_percent=current_opening_percent,
+        )
         self._record_event_if_needed(distance_cm=distance_cm, warnings=warnings)
 
         snapshot = SystemSnapshot(

@@ -14,11 +14,20 @@ final class WebAppException extends RuntimeException
 {
 }
 
+function discardAnyPhpOutputBuffers(): void
+{
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+}
+
 function jsonResponse(int $status, array $payload): never
 {
+    discardAnyPhpOutputBuffers();
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    echo $encoded !== false ? $encoded : '{"ok":false,"error":"Encodage JSON impossible."}';
     exit;
 }
 
@@ -79,6 +88,16 @@ function parseHttpStatus(array $httpResponseHeader): int
 
 function callCloudApi(string $method, string $path, ?array $body = null): array
 {
+    if (filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN) !== true) {
+        return [
+            'status' => 503,
+            'data' => null,
+            'raw' => null,
+            'url' => resolveCloudApiBaseUrl() . $path,
+            'error' => 'allow_url_fopen est désactivé: impossible d’appeler l’API cloud depuis PHP.',
+        ];
+    }
+
     $baseUrl = resolveCloudApiBaseUrl();
     $url = $baseUrl . $path;
     $context = createHttpContext($method, $body);
@@ -123,6 +142,9 @@ function handleApiProxy(): never
     $status = (int) $response['status'];
     $isSuccess = $status >= 200 && $status < 300;
     $body = is_array($response['data']) ? $response['data'] : ['raw' => $response['raw']];
+    if (isset($response['error']) && is_string($response['error'])) {
+        $body['detail'] = $response['error'];
+    }
 
     jsonResponse($status, [
         'ok' => $isSuccess,
@@ -169,7 +191,17 @@ function safeText(string $value): string
 }
 
 if (isset($_GET['api'])) {
-    handleApiProxy();
+    ini_set('display_errors', '0');
+    ob_start();
+    try {
+        handleApiProxy();
+    } catch (Throwable $exception) {
+        jsonResponse(500, [
+            'ok' => false,
+            'error' => $exception->getMessage(),
+            'body' => null,
+        ]);
+    }
 }
 
 $dbName = getenv('MYSQL_DATABASE') ?: 'db_objet';
@@ -202,6 +234,11 @@ try {
     .warning { background: #fff3cd; color: #664d03; border-radius: 6px; padding: 0.6rem; margin-top: 0.5rem; }
     .error { background: #f8d7da; color: #842029; border-radius: 6px; padding: 0.6rem; margin-top: 0.5rem; }
     .success { background: #d1e7dd; color: #0f5132; border-radius: 6px; padding: 0.6rem; margin-top: 0.5rem; }
+    .blinking-alert { animation: alertBlink 0.9s step-end infinite; }
+    @keyframes alertBlink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0.3; }
+    }
     label { font-size: 0.9rem; color: #36495e; display: block; margin-bottom: 0.15rem; }
     input, select, button { font: inherit; padding: 0.4rem 0.55rem; border: 1px solid #c2cfde; border-radius: 7px; }
     button { cursor: pointer; background: #1d4f91; color: #fff; border-color: #1d4f91; }
@@ -373,6 +410,7 @@ try {
 
     function showPanel(id, text) {
       const el = document.getElementById(id);
+      el.classList.remove('blinking-alert');
       if (!text) {
         el.style.display = 'none';
         el.textContent = '';
@@ -391,7 +429,17 @@ try {
         options.body = JSON.stringify(body);
       }
       const response = await fetch(url, options);
-      const json = await response.json();
+      const text = await response.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        const preview = text.replace(/\s+/g, ' ').trim().slice(0, 240);
+        const hint = preview.startsWith('<')
+          ? 'Le serveur a renvoyé du HTML (souvent une erreur PHP ou une page d’erreur), pas du JSON.'
+          : 'Réponse invalide (pas du JSON).';
+        throw new Error(`${hint} Extrait: ${preview || '(vide)'}`);
+      }
       if (!response.ok || !json.ok) {
         const detail = json?.body?.detail || json?.error || 'Erreur API.';
         throw new Error(detail);
@@ -428,6 +476,18 @@ try {
 
       showPanel('warningBox', body.avertissement || '');
       showPanel('errorBox', body.erreur === 'oui' ? 'Anomalie détectée (erreur = oui).' : '');
+      applyAlertBlinkingState(body);
+    }
+
+    function applyAlertBlinkingState(body) {
+      const warningText = String(body?.avertissement || '').toLowerCase();
+      const hasOpeningAnomaly = warningText.includes('ouverte plus que nécessaire')
+        || warningText.includes('ouverte moins que nécessaire');
+      if (!hasOpeningAnomaly) return;
+      const warningPanel = document.getElementById('warningBox');
+      const errorPanel = document.getElementById('errorBox');
+      if (warningPanel.style.display !== 'none') warningPanel.classList.add('blinking-alert');
+      if (errorPanel.style.display !== 'none') errorPanel.classList.add('blinking-alert');
     }
 
     function renderHistory(payload) {

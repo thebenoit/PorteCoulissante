@@ -7,9 +7,15 @@ from motor import MOTOR_DISPLAY_RPM, MotorSimulator
 
 
 class FakeSensorManager:
-    def __init__(self, temperature_c: float, luminosity_percent: float) -> None:
+    def __init__(
+        self,
+        temperature_c: float,
+        luminosity_percent: float,
+        distance_cm: float | None = None,
+    ) -> None:
         self._temperature_c = temperature_c
         self._luminosity_percent = luminosity_percent
+        self._distance_cm = distance_cm
 
     def read_temperature_c(self) -> float:
         return self._temperature_c
@@ -18,7 +24,7 @@ class FakeSensorManager:
         return self._luminosity_percent
 
     def read_distance_cm(self):  # type: ignore[no-untyped-def]
-        return None
+        return self._distance_cm
 
     def get_warnings(self) -> list[str]:
         return []
@@ -63,4 +69,29 @@ def test_motor_running_speed_matches_configured_display_constant() -> None:
     status = motor.get_motor_status()
     assert status.is_running is True
     assert status.speed_rpm == MOTOR_DISPLAY_RPM
+
+
+def test_auto_mode_adds_warning_when_real_opening_is_far_above_computed_opening() -> None:
+    sensors = FakeSensorManager(temperature_c=24.0, luminosity_percent=20.0, distance_cm=9.0)
+    motor = MotorSimulator(initial_opening_percent=100.0)
+    controller = GreenhouseController(sensor_manager=sensors, motor=motor)
+    controller.set_mode("auto")
+
+    snapshot = controller.step_once(dt_seconds=0.1)
+
+    assert math.isclose(snapshot.automatic_opening_percent, 20.0, rel_tol=1e-6, abs_tol=1e-6)
+    assert any("ouverte plus que nécessaire" in warning for warning in snapshot.warnings)
+
+
+def test_auto_mode_skips_deviation_warning_when_opening_gap_is_small() -> None:
+    sensors = FakeSensorManager(temperature_c=30.0, luminosity_percent=80.0, distance_cm=6.0)
+    motor = MotorSimulator(initial_opening_percent=40.0)
+    controller = GreenhouseController(sensor_manager=sensors, motor=motor)
+    controller.set_mode("auto")
+
+    snapshot = controller.step_once(dt_seconds=0.1)
+
+    assert math.isclose(snapshot.automatic_opening_percent, 37.5, rel_tol=1e-6, abs_tol=1e-6)
+    assert not any("ouverte plus que nécessaire" in warning for warning in snapshot.warnings)
+    assert not any("ouverte moins que nécessaire" in warning for warning in snapshot.warnings)
 
