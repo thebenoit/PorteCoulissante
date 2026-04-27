@@ -199,13 +199,14 @@ function handleApiProxy(): never
 
 function connectDb(): mysqli
 {
-    $dbHost = getenv('MYSQL_HOST') ?: 'db';
-    $dbUser = getenv('MYSQL_USER') ?: 'user';
-    $dbPass = getenv('MYSQL_PASSWORD') ?: 'pass';
-    $dbName = getenv('MYSQL_DATABASE') ?: 'db_objet';
+    $dbHost = getenv('MYSQL_HOST') ?: (getenv('DB_HOST') ?: 'db');
+    $dbPort = (int) (getenv('MYSQL_PORT') ?: (getenv('DB_PORT') ?: '3306'));
+    $dbUser = getenv('MYSQL_USER') ?: (getenv('DB_USER') ?: 'user');
+    $dbPass = getenv('MYSQL_PASSWORD') ?: (getenv('DB_PASSWORD') ?: 'pass');
+    $dbName = getenv('MYSQL_DATABASE') ?: (getenv('DB_NAME') ?: 'db_objet');
 
     try {
-        $mysqli = @new mysqli($dbHost, $dbUser, $dbPass, $dbName);
+        $mysqli = @new mysqli($dbHost, $dbUser, $dbPass, $dbName, $dbPort);
     } catch (Throwable $exception) {
         throw new WebAppException('Connexion MySQL impossible: ' . $exception->getMessage());
     }
