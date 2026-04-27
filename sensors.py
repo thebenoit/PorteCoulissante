@@ -150,8 +150,9 @@ class SensorManager:
     def __init__(self) -> None:
         self.is_hardware_available = self._detect_raspberry_gpio()
 
-        # Simulation (PC)
-        self._sim_temperature = RandomWalkSignal(initial=30.0, low=0.0, high=50.0, max_step=1.2)
+        # Simulation (PC) : plage type pièce (pas 0–50 °C). Avec high=50, la marche aléatoire finit
+        # souvent plaquée vers 50 °C — on évite ça tout en gardant des T compatibles avec le TP.
+        self._sim_temperature = RandomWalkSignal(initial=24.0, low=18.0, high=32.0, max_step=1.2)
         self._sim_luminosity = RandomWalkSignal(initial=80.0, low=0.0, high=100.0, max_step=3.5)
 
         # Matériel (RPi) : initialisation lazy
