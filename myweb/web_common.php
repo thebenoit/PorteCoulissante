@@ -35,6 +35,54 @@ function readJsonRequestBody(): array
     return is_array($decoded) ? $decoded : [];
 }
 
+/**
+ * Entrée proxy : POST JSON { action, device_id, command? } (recommandé, évite le filtrage WAF
+ * sur certaines query strings) ou legacy GET ?api=...&device_id=...
+ *
+ * @return array{action: string, device_id: string, command_body: ?array, source: string}
+ */
+function parse_proxy_input(): array
+{
+    $requestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    $raw = file_get_contents('php://input');
+    $json = [];
+    if (is_string($raw) && trim($raw) !== '') {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $json = $decoded;
+        }
+    }
+
+    if ($requestMethod === 'POST' && isset($json['action'], $json['device_id'])) {
+        $cmd = $json['command'] ?? null;
+        return [
+            'action' => trim((string) $json['action']),
+            'device_id' => trim((string) $json['device_id']),
+            'command_body' => is_array($cmd) ? $cmd : null,
+            'source' => 'post_envelope',
+        ];
+    }
+
+    $action = isset($_GET['api']) ? trim((string) $_GET['api']) : '';
+    $deviceId = isset($_GET['device_id']) ? trim((string) $_GET['device_id']) : '';
+
+    if ($action === 'command' && $requestMethod === 'POST' && $json !== []) {
+        return [
+            'action' => $action,
+            'device_id' => $deviceId,
+            'command_body' => $json,
+            'source' => 'legacy_post_body',
+        ];
+    }
+
+    return [
+        'action' => $action,
+        'device_id' => $deviceId,
+        'command_body' => null,
+        'source' => 'get',
+    ];
+}
+
 function resolveCloudApiBaseUrl(): string
 {
     $envValue = getenv('CLOUD_API_BASE_URL');
@@ -109,8 +157,9 @@ function callCloudApi(string $method, string $path, ?array $body = null): array
 
 function handleApiProxy(): never
 {
-    $action = isset($_GET['api']) ? trim((string) $_GET['api']) : '';
-    $deviceId = isset($_GET['device_id']) ? trim((string) $_GET['device_id']) : '';
+    $in = parse_proxy_input();
+    $action = $in['action'];
+    $deviceId = $in['device_id'];
     if ($deviceId === '') {
         jsonResponse(400, ['ok' => false, 'error' => 'device_id est requis.']);
     }
@@ -122,12 +171,12 @@ function handleApiProxy(): never
         $path = buildCloudPath('/latest', $deviceId);
     } elseif ($action === 'history') {
         $path = buildCloudPath('/history?limit=20', $deviceId);
-    } elseif ($action === 'pending') {
+    } elseif ($action === 'pending' || $action === 'commands_queue') {
         $path = buildCloudPath('/commands/pending?limit=20', $deviceId);
     } elseif ($action === 'command') {
         $method = 'POST';
         $path = buildCloudPath('/commands', $deviceId);
-        $payload = readJsonRequestBody();
+        $payload = $in['command_body'] ?? [];
     } else {
         jsonResponse(400, ['ok' => false, 'error' => 'Action API inconnue.']);
     }

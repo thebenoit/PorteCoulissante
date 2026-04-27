@@ -145,17 +145,19 @@ class CloudApiAgent:
         if self._command_container is None:
             return []
         safe_limit = max(1, min(int(limit), 100))
+        # Sans ORDER BY SQL : ORDER BY cross-partition sur id_date peut faire échouer la requête
+        # Cosmos (politique d’index composite manquante) → 500 côté API.
+        fetch_cap = min(500, max(safe_limit * 10, safe_limit))
         query = (
-            "SELECT TOP @limit c.id, c.id_objet, c.type, c.id_date, c.status, c.commande, c.valeur, c.action "
+            "SELECT TOP @fetch_cap c.id, c.id_objet, c.type, c.id_date, c.status, c.commande, c.valeur, c.action "
             "FROM c "
-            "WHERE c.type = 'command' AND c.id_objet = @device_id AND c.status = 'en_attente' "
-            "ORDER BY c.id_date ASC"
+            "WHERE c.type = 'command' AND c.id_objet = @device_id AND c.status = 'en_attente'"
         )
         params = [
             {"name": QUERY_PARAM_DEVICE_ID, "value": device_id},
-            {"name": "@limit", "value": safe_limit},
+            {"name": "@fetch_cap", "value": fetch_cap},
         ]
-        return [
+        raw_items = [
             dict(item)
             for item in self._command_container.query_items(
                 query=query,
@@ -163,6 +165,12 @@ class CloudApiAgent:
                 enable_cross_partition_query=True,
             )
         ]
+
+        def _sort_key(doc: dict[str, Any]) -> str:
+            return str(doc.get("id_date") or "")
+
+        raw_items.sort(key=_sort_key)
+        return raw_items[:safe_limit]
 
     def ack_command(
         self,
