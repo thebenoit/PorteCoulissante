@@ -74,12 +74,7 @@ class CloudApiAgent:
     def get_latest_telemetry(self, device_id: str) -> dict[str, Any] | None:
         if self._telemetry_container is None:
             return None
-        query = (
-            "SELECT TOP 1 c.id, c._ts, c.body, c.systemProperties "
-            "FROM c "
-            "WHERE IS_DEFINED(c.body.id_objet) AND c.body.id_objet = @device_id "
-            "ORDER BY c._ts DESC"
-        )
+        query = self._build_latest_telemetry_query()
         params = [{"name": QUERY_PARAM_DEVICE_ID, "value": device_id}]
         items = list(
             self._telemetry_container.query_items(
@@ -90,30 +85,50 @@ class CloudApiAgent:
         )
         if not items:
             return None
-        return dict(items[0])
+        return self._normalize_telemetry_item(dict(items[0]))
 
     def get_telemetry_history(self, device_id: str, limit: int = 50) -> list[dict[str, Any]]:
         if self._telemetry_container is None:
             return []
         safe_limit = max(1, min(int(limit), 500))
-        query = (
-            "SELECT TOP @limit c.id, c._ts, c.body, c.systemProperties "
-            "FROM c "
-            "WHERE IS_DEFINED(c.body.id_objet) AND c.body.id_objet = @device_id "
-            "ORDER BY c._ts DESC"
-        )
+        query = self._build_history_telemetry_query()
         params = [
             {"name": QUERY_PARAM_DEVICE_ID, "value": device_id},
             {"name": "@limit", "value": safe_limit},
         ]
         return [
-            dict(item)
+            self._normalize_telemetry_item(dict(item))
             for item in self._telemetry_container.query_items(
                 query=query,
                 parameters=params,
                 enable_cross_partition_query=True,
             )
         ]
+
+    def _build_latest_telemetry_query(self) -> str:
+        return (
+            "SELECT TOP 1 c.id, c._ts, c.body, c.Body, c.systemProperties "
+            "FROM c "
+            "WHERE (IS_DEFINED(c.body.id_objet) AND c.body.id_objet = @device_id) "
+            "OR (IS_DEFINED(c.Body.id_objet) AND c.Body.id_objet = @device_id) "
+            "ORDER BY c._ts DESC"
+        )
+
+    def _build_history_telemetry_query(self) -> str:
+        return (
+            "SELECT TOP @limit c.id, c._ts, c.body, c.Body, c.systemProperties "
+            "FROM c "
+            "WHERE (IS_DEFINED(c.body.id_objet) AND c.body.id_objet = @device_id) "
+            "OR (IS_DEFINED(c.Body.id_objet) AND c.Body.id_objet = @device_id) "
+            "ORDER BY c._ts DESC"
+        )
+
+    def _normalize_telemetry_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        normalized_body = item.get("body")
+        if normalized_body is None and isinstance(item.get("Body"), dict):
+            normalized_body = item["Body"]
+        item["body"] = normalized_body
+        return item
 
     def create_command(
         self,
